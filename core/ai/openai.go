@@ -55,7 +55,6 @@ func NewOpenai() (*OpenAIClient, error) {
 func convertTools(tools []task.ToolDefinition) []openai.FunctionDefinition {
 	defs := make([]openai.FunctionDefinition, 0, len(tools))
 	for _, t := range tools {
-		// marshal the input schema as-is – OpenAI expects JSON schema
 		params, _ := json.Marshal(t.InputSchema)
 
 		defs = append(defs, openai.FunctionDefinition{
@@ -79,6 +78,7 @@ func (o *OpenAIClient) GenerateCodeWithContext(ctx context.Context, promptData *
 	// attach structured tool definitions
 	functions := convertTools(promptData.Tools)
 
+	// default model list (try the newest first, fall back if unavailable)
 	models := []string{
 		"gpt-4o",
 		"gpt-4o-mini",
@@ -109,7 +109,6 @@ func (o *OpenAIClient) GenerateCodeWithContext(ctx context.Context, promptData *
 
 		choice := resp.Choices[0]
 
-		// 1. Function call path (structured tool)
 		if choice.Message.FunctionCall != nil && choice.Message.FunctionCall.Name != "" {
 			name := choice.Message.FunctionCall.Name
 			var argObj map[string]interface{}
@@ -128,7 +127,6 @@ func (o *OpenAIClient) GenerateCodeWithContext(ctx context.Context, promptData *
 			return md, nil
 		}
 
-		// 2. Plain text path (no function invoked)
 		return choice.Message.Content, nil
 	}
 

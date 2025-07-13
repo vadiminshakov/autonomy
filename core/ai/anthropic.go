@@ -38,7 +38,7 @@ func (c *AnthropicClient) GenerateCode(pd *task.PromptData) (string, error) {
 
 // GenerateCodeWithContext converts PromptData into Anthropic Messages API call with context support
 func (c *AnthropicClient) GenerateCodeWithContext(ctx context.Context, pd *task.PromptData) (string, error) {
-	// Build message list from conversation history
+	// build message list from conversation history
 	var msgs []anthropic.MessageParam
 
 	for _, m := range pd.Messages {
@@ -79,7 +79,7 @@ func (c *AnthropicClient) GenerateCodeWithContext(ctx context.Context, pd *task.
 		})
 	}
 
-	// Default model list (try the newest first, fall back if unavailable)
+	// default model list (try the newest first, fall back if unavailable)
 	models := []anthropic.Model{
 		anthropic.ModelClaude3_7SonnetLatest,
 		anthropic.ModelClaude3_5SonnetLatest,
