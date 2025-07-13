@@ -67,6 +67,7 @@ func convertTools(tools []task.ToolDefinition) []openai.FunctionDefinition {
 	return defs
 }
 
+// GenerateCode generates AI response using OpenAI API
 func (o *OpenAIClient) GenerateCode(promptData *task.PromptData) (string, error) {
 	return o.GenerateCodeWithContext(context.Background(), promptData)
 }
