@@ -28,6 +28,7 @@ func GetIndexManager() *IndexManager {
 		wd, _ := os.Getwd()
 		globalIndexManager = NewIndexManager(wd)
 	})
+	
 	return globalIndexManager
 }
 
