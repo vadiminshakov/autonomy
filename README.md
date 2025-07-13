@@ -1,6 +1,6 @@
 # Autonomy – AI Coding Agent in Go
 
-This repository is a small experimental project that explores building an AI-powered coding assistant in Golang.
+An experimental AI coding assistant written in Go.
 
 ## Prerequisites
 
