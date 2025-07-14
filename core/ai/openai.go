@@ -67,11 +67,7 @@ func convertTools(tools []task.ToolDefinition) []openai.FunctionDefinition {
 }
 
 // GenerateCode generates AI response using OpenAI API
-func (o *OpenAIClient) GenerateCode(promptData *task.PromptData) (string, error) {
-	return o.GenerateCodeWithContext(context.Background(), promptData)
-}
-
-func (o *OpenAIClient) GenerateCodeWithContext(ctx context.Context, promptData *task.PromptData) (string, error) {
+func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData *task.PromptData) (*task.AIResponse, error) {
 	formatter := &OpenAIFormatter{}
 	messages := formatter.FormatPrompt(promptData)
 
@@ -109,6 +105,7 @@ func (o *OpenAIClient) GenerateCodeWithContext(ctx context.Context, promptData *
 
 		choice := resp.Choices[0]
 
+		// Handle function call
 		if choice.Message.FunctionCall != nil && choice.Message.FunctionCall.Name != "" {
 			name := choice.Message.FunctionCall.Name
 			var argObj map[string]interface{}
@@ -117,18 +114,21 @@ func (o *OpenAIClient) GenerateCodeWithContext(ctx context.Context, promptData *
 				argObj = map[string]interface{}{"raw": choice.Message.FunctionCall.Arguments}
 			}
 
-			// build markdown block compatible with existing parser
-			md := "```" + name + "\n"
-			for k, v := range argObj {
-				md += fmt.Sprintf("%s: %v\n", k, v)
-			}
-			md += "```"
-
-			return md, nil
+			return &task.AIResponse{
+				Content: choice.Message.Content,
+				ToolCalls: []task.ToolCall{
+					{
+						Name: name,
+						Args: argObj,
+					},
+				},
+			}, nil
 		}
 
-		return choice.Message.Content, nil
+		return &task.AIResponse{
+			Content: choice.Message.Content,
+		}, nil
 	}
 
-	return "", fmt.Errorf("all OpenAI models are unavailable, last error: %v", lastErr)
+	return nil, fmt.Errorf("all OpenAI models are unavailable, last error: %v", lastErr)
 }
