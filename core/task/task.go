@@ -12,198 +12,179 @@ import (
 	"autonomy/ui"
 )
 
-const (
-	maxIterations      = 100
-	maxHistorySize     = 20 // limit conversation history
-	aiCallTimeout      = 100 * time.Second
-)
+// Config holds task execution configuration
+type Config struct {
+	MaxIterations     int
+	MaxHistorySize    int
+	AICallTimeout     time.Duration
+	ToolTimeout       time.Duration
+	MinAPIInterval    time.Duration
+	MaxNoToolAttempts int
+}
 
-// Message represents a single entry in the conversation history.
-// Role can be "system", "user", or "assistant".
+// DefaultConfig returns default task configuration
+func defaultConfig() Config {
+	return Config{
+		MaxIterations:     100,
+		MaxHistorySize:    20,
+		AICallTimeout:     100 * time.Second,
+		ToolTimeout:       30 * time.Second,
+		MinAPIInterval:    time.Second,
+		MaxNoToolAttempts: 3,
+	}
+}
+
+// Message represents a conversation entry
 type Message struct {
 	Role    string
 	Content string
 }
 
-// ToolCall describes a tool invocation extracted from an AI response
+// ToolCall describes a tool invocation
 type ToolCall struct {
 	Name string
 	Args map[string]interface{}
 }
 
-// ToolResponse describes an AI reply that instructs the agent to execute a tool.
-// Tool      – tool name
-// Args      – tool arguments
-// Message   – free-form assistant message
-// Done      – marks the task as finished
-type ToolResponse struct {
-	Tool    string                 `json:"tool"`
-	Args    map[string]interface{} `json:"args"`
-	Message string                 `json:"message"`
-	Done    bool                   `json:"done"`
-}
-
-// AIResponse represents a response from an AI model
+// AIResponse represents AI model response
 type AIResponse struct {
-	Content   string     // Text response (if any)
-	ToolCalls []ToolCall // Native tool calls (if any)
+	Content   string
+	ToolCalls []ToolCall
 }
 
-// AIClient abstracts an AI model client implementation.
+// AIClient abstracts AI model client
 type AIClient interface {
 	GenerateCode(ctx context.Context, promptData *PromptData) (*AIResponse, error)
 }
 
+// Task manages AI-driven task execution
 type Task struct {
-	client         AIClient
-	promptData     *PromptData
-	noToolCount    int
-	mu             sync.RWMutex
-	ctx            context.Context
-	cancel         context.CancelFunc
-	lastAPICall    time.Time
-	minAPIInterval time.Duration
+	client     AIClient
+	promptData *PromptData
+	config     Config
+
+	mu          sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	noToolCount int
+	lastAPICall time.Time
 }
 
-// NewTask initializes a fresh Task with the universal system prompt.
+// NewTask creates a new task with default configuration
 func NewTask(client AIClient) *Task {
+	return NewTaskWithConfig(client, defaultConfig())
+}
+
+// NewTaskWithConfig creates a new task with custom configuration
+func NewTaskWithConfig(client AIClient, config Config) *Task {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Task{
-		client:         client,
-		promptData:     NewPromptData(),
-		ctx:            ctx,
-		cancel:         cancel,
-		minAPIInterval: time.Second, // Rate limit: 1 request per second
+		client:     client,
+		promptData: NewPromptData(),
+		config:     config,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
-// Close properly shuts down the task and releases resources
+// Close releases task resources
 func (t *Task) Close() {
 	if t.cancel != nil {
 		t.cancel()
 	}
 }
 
-// AddUserMessage appends a user message to the history and logs it.
+// AddUserMessage adds a user message to history
 func (t *Task) AddUserMessage(message string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	t.promptData.AddMessage("user", message)
 	t.trimHistoryIfNeeded()
 }
 
-// appendAssistantMessage adds an assistant message to history.
-func (t *Task) appendAssistantMessage(content string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.promptData.AddMessage("assistant", content)
-	t.trimHistoryIfNeeded()
-}
+// ProcessTask executes the main task loop
+func (t *Task) ProcessTask() error {
+	defer t.Close()
 
-// trimHistoryIfNeeded removes old messages to prevent memory bloat
-func (t *Task) trimHistoryIfNeeded() {
-	if len(t.promptData.Messages) > maxHistorySize {
-		// keep the first message and the last maxHistorySize-1 messages
-		excess := len(t.promptData.Messages) - maxHistorySize
-		t.promptData.Messages = append(t.promptData.Messages[:1], t.promptData.Messages[excess+1:]...)
-		log.Printf("Trimmed %d old messages from history", excess)
+	for iter := 0; iter < t.config.MaxIterations; iter++ {
+		if err := t.checkCancellation(); err != nil {
+			return err
+		}
+
+		response, err := t.callAi()
+		if err != nil {
+			return t.handleAIError(err)
+		}
+
+		t.addAssistantMessage(response.Content)
+
+		if len(response.ToolCalls) == 0 {
+			if shouldAbort := t.handleNoTools(); shouldAbort {
+				return errors.New("ai did not provide tool invocations after multiple attempts")
+			}
+
+			continue
+		}
+
+		t.resetNoToolCount()
+
+		if done, err := t.executeTools(response.ToolCalls); err != nil {
+			fmt.Println(ui.Error("Tool execution error: " + err.Error()))
+			continue
+		} else if done {
+			return nil
+		}
 	}
+
+	fmt.Println(ui.Warning(fmt.Sprintf(
+		"Reached limit of %d attempts. Type 'continue' to resume",
+		t.config.MaxIterations,
+	)))
+	return nil
 }
 
-// forceToolUsage appends a user message that forces the AI to use tools.
-func (t *Task) forceToolUsage() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.promptData.AddMessage("user", t.promptData.GetForceToolsMessage())
+// callAi gets response from AI with rate limiting
+func (t *Task) callAi() (*AIResponse, error) {
+	if err := t.enforceRateLimit(); err != nil {
+		return nil, fmt.Errorf("rate limit error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.ctx, t.config.AICallTimeout)
+	defer cancel()
+
+	// Thread-safe prompt copy
+	t.mu.RLock()
+	promptCopy := t.copyPromptData()
+	t.mu.RUnlock()
+
+	response, err := t.client.GenerateCode(ctx, &promptCopy)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("AI response: %s", response.Content)
+	return response, nil
 }
 
-// executeTools runs the parsed tool calls sequentially with timeout and updates conversation history.
-// It returns true if the task is completed (attempt_completion).
+// executeTools runs tool calls sequentially
 func (t *Task) executeTools(calls []ToolCall) (bool, error) {
 	fmt.Println(ui.Tool(fmt.Sprintf("Executing %d tools...", len(calls))))
 
-	// create a context with timeout for the entire tool execution
 	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
 	defer cancel()
 
 	for i, call := range calls {
-		select {
-		case <-ctx.Done():
-			return false, fmt.Errorf("tool execution timed out or was cancelled")
-		default:
+		if err := t.checkContext(ctx); err != nil {
+			return false, err
 		}
 
 		fmt.Printf("%s\n", ui.Blue(fmt.Sprintf("📋 Tool %d/%d: %s", i+1, len(calls), call.Name)))
 
-		// execute the tool with individual timeout
-		toolCtx, toolCancel := context.WithTimeout(ctx, 30*time.Second)
-		
-		// channel to receive result with timeout
-		resultChan := make(chan struct {
-			res string
-			err error
-		}, 1)
-		
-		go func() {
-			res, err := tools.Execute(call.Name, call.Args)
-			resultChan <- struct {
-				res string
-				err error
-			}{res, err}
-		}()
-		
-		var res string
-		var err error
-		
-		select {
-		case result := <-resultChan:
-			res = result.res
-			err = result.err
-		case <-toolCtx.Done():
-			err = fmt.Errorf("tool %s timed out after 2 minutes", call.Name)
-		}
-		
-		toolCancel()
+		result, err := t.exec(ctx, call)
+		t.handleToolResult(call, result, err)
 
-		if err != nil {
-			fmt.Println(ui.Error(fmt.Sprintf("Error running %s: %v", call.Name, err)))
-			if res != "" && !isSilentTool(call.Name) {
-				fmt.Printf("%s\n", ui.Dim("Result: "+res))
-			}
-			t.mu.Lock()
-			t.promptData.AddMessage("user", fmt.Sprintf("Error executing %s: %v. Result: %s", call.Name, err, res))
-			t.mu.Unlock()
-			continue
-		}
-
-		// success path
-		silent := isSilentTool(call.Name)
-		if silent {
-			summary := silentToolSummary(call.Name, call.Args, res)
-			fmt.Println(ui.Success("Done "+call.Name) + summary)
-			// keep output concise for the user but give the full data back to the model
-			t.mu.Lock()
-			t.promptData.AddMessage("user", fmt.Sprintf("Result of %s: %s", call.Name, res))
-			t.mu.Unlock()
-		} else {
-			fmt.Println(ui.Success("Done " + call.Name))
-			if res != "" {
-				if call.Name == "attempt_completion" {
-					// highlight the final summary for clarity
-					fmt.Println(ui.Info(res))
-					return true, nil
-				} else {
-					fmt.Printf("%s\n", ui.Dim("Result: "+res))
-
-					// for non-silent tools, send the full result
-					t.mu.Lock()
-					t.promptData.AddMessage("user", fmt.Sprintf("Result of %s: %s", call.Name, res))
-					t.mu.Unlock()
-				}
-			}
-		}
-
-		if call.Name == "attempt_completion" {
+		if call.Name == "attempt_completion" && err == nil {
 			return true, nil
 		}
 	}
@@ -211,83 +192,160 @@ func (t *Task) executeTools(calls []ToolCall) (bool, error) {
 	return false, nil
 }
 
+// exec executes a single tool
+func (t *Task) exec(ctx context.Context, call ToolCall) (string, error) {
+	toolCtx, cancel := context.WithTimeout(ctx, t.config.ToolTimeout)
+	defer cancel()
 
-// ProcessTask is the main loop that queries the AI and executes the requested tools.
-func (t *Task) ProcessTask() error {
-	defer t.Close()
+	resultChan := make(chan struct {
+		res string
+		err error
+	}, 1)
 
-	for iter := 0; iter < maxIterations; iter++ {
-		select {
-		case <-t.ctx.Done():
-			return fmt.Errorf("task cancelled: %v", t.ctx.Err())
-		default:
+	go func() {
+		res, err := tools.Execute(call.Name, call.Args)
+		resultChan <- struct {
+			res string
+			err error
+		}{res, err}
+	}()
+
+	select {
+	case result := <-resultChan:
+		return result.res, result.err
+	case <-toolCtx.Done():
+		return "", fmt.Errorf("tool %s timed out after %v", call.Name, t.config.ToolTimeout)
+	}
+}
+
+// handleToolResult processes tool execution result
+func (t *Task) handleToolResult(call ToolCall, result string, err error) {
+	if err != nil {
+		fmt.Println(ui.Error(fmt.Sprintf("Error running %s: %v", call.Name, err)))
+		if result != "" && !isSilentTool(call.Name) {
+			fmt.Printf("%s\n", ui.Dim("Result: "+result))
 		}
+		t.addUserMessage(fmt.Sprintf("Error executing %s: %v. Result: %s", call.Name, err, result))
+		return
+	}
 
-		// rate limiting for AI API calls
-		if err := t.waitForAPIRateLimit(); err != nil {
-			return fmt.Errorf("rate limit error: %v", err)
-		}
-
-		aiResp, err := t.callAI()
-		if err != nil {
-			fmt.Println(ui.Error("AI error: " + err.Error()))
-			fmt.Println(ui.Info("Please try again or rephrase the request"))
-			return err
-		}
-		log.Printf("AI response: %s", aiResp.Content)
-
-		t.appendAssistantMessage(aiResp.Content)
-
-		toolCalls := aiResp.ToolCalls
-
-		if len(toolCalls) == 0 {
-			t.mu.Lock()
-			t.noToolCount++
-			noToolCount := t.noToolCount
-			t.mu.Unlock()
-
-			if noToolCount >= 3 {
-				fmt.Println(ui.Warning("AI failed to start the task (no tool invocations). Aborting."))
-				return errors.New("ai did not provide tool invocations after multiple attempts")
+	// Success path
+	if isSilentTool(call.Name) {
+		summary := silentToolSummary(call.Name, call.Args, result)
+		fmt.Println(ui.Success("Done "+call.Name) + summary)
+	} else {
+		fmt.Println(ui.Success("Done " + call.Name))
+		if result != "" {
+			if call.Name == "attempt_completion" {
+				fmt.Println(ui.Info(result))
+			} else {
+				fmt.Printf("%s\n", ui.Dim("Result: "+result))
 			}
-
-			fmt.Println(ui.Warning("AI did not use any tools. Forcing tool usage..."))
-			t.forceToolUsage()
-
-			continue
-		}
-
-		// reset counter after successful tool usage
-		t.mu.Lock()
-		t.noToolCount = 0
-		t.mu.Unlock()
-
-		done, err := t.executeTools(toolCalls)
-		if err != nil {
-			fmt.Println(ui.Error("Tool execution error: " + err.Error()))
-			continue
-		}
-
-		if done {
-			return nil
 		}
 	}
 
-	fmt.Println(ui.Warning(fmt.Sprintf("reached the limit of %d attempts, task stopped. Type 'continue' or clarify the request to resume", maxIterations)))
-
-	return nil
+	t.addUserMessage(fmt.Sprintf("Result of %s: %s", call.Name, result))
 }
 
-// waitForAPIRateLimit ensures we don't exceed API rate limits
-func (t *Task) waitForAPIRateLimit() error {
+// Helper methods
+func (t *Task) checkCancellation() error {
+	select {
+	case <-t.ctx.Done():
+		return fmt.Errorf("task cancelled: %v", t.ctx.Err())
+	default:
+		return nil
+	}
+}
+
+func (t *Task) checkContext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("operation timed out or was cancelled")
+	default:
+		return nil
+	}
+}
+
+func (t *Task) addAssistantMessage(content string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.promptData.AddMessage("assistant", content)
+	t.trimHistoryIfNeeded()
+}
+
+func (t *Task) addUserMessage(message string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.promptData.AddMessage("user", message)
+	t.trimHistoryIfNeeded()
+}
+
+func (t *Task) trimHistoryIfNeeded() {
+	if len(t.promptData.Messages) > t.config.MaxHistorySize {
+		// cut half of MaxHistorySize from the start, but always keep the first message
+		cut := t.config.MaxHistorySize / 2
+		excess := len(t.promptData.Messages) - t.config.MaxHistorySize
+
+		if cut < 1 {
+			cut = 1
+		}
+
+		if excess < cut {
+			cut = excess
+		}
+
+		t.promptData.Messages = append(
+			t.promptData.Messages[:1],
+			t.promptData.Messages[cut+1:]...,
+		)
+		log.Printf("Trimmed %d old messages from history", cut)
+	}
+}
+
+func (t *Task) handleNoTools() bool {
+	t.mu.Lock()
+	t.noToolCount++
+	count := t.noToolCount
+	t.mu.Unlock()
+
+	if count >= t.config.MaxNoToolAttempts {
+		fmt.Println(ui.Warning("AI failed to start the task (no tool invocations). Aborting."))
+
+		return true
+	}
+
+	fmt.Println(ui.Warning("AI did not use any tools. Forcing tool usage..."))
+	t.forceToolUsage()
+
+	return false
+}
+
+func (t *Task) resetNoToolCount() {
+	t.mu.Lock()
+	t.noToolCount = 0
+	t.mu.Unlock()
+}
+
+func (t *Task) forceToolUsage() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.promptData.AddMessage("user", t.promptData.GetForceToolsMessage())
+}
+
+func (t *Task) enforceRateLimit() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	elapsed := time.Since(t.lastAPICall)
-	if elapsed < t.minAPIInterval {
-		waitTime := t.minAPIInterval - elapsed
+	if elapsed < t.config.MinAPIInterval {
+		waitTime := t.config.MinAPIInterval - elapsed
+		t.mu.Unlock()
+
 		select {
 		case <-time.After(waitTime):
+			t.mu.Lock()
 			t.lastAPICall = time.Now()
 			return nil
 		case <-t.ctx.Done():
@@ -299,20 +357,16 @@ func (t *Task) waitForAPIRateLimit() error {
 	return nil
 }
 
-// callAI calls the AI with timeout and returns native response
-func (t *Task) callAI() (*AIResponse, error) {
-	// create a context with timeout for the AI call
-	ctx, cancel := context.WithTimeout(t.ctx, aiCallTimeout)
-	defer cancel()
-
-	// we need to create a copy of promptData for thread safety
-	t.mu.RLock()
+func (t *Task) copyPromptData() PromptData {
 	promptCopy := *t.promptData
 	promptCopy.Messages = make([]Message, len(t.promptData.Messages))
 	copy(promptCopy.Messages, t.promptData.Messages)
-	t.mu.RUnlock()
-
-	// call the unified GenerateCode method
-	return t.client.GenerateCode(ctx, &promptCopy)
+	return promptCopy
 }
 
+func (t *Task) handleAIError(err error) error {
+	fmt.Println(ui.Error("AI error: " + err.Error()))
+	fmt.Println(ui.Info("Please try again or rephrase the request"))
+
+	return err
+}

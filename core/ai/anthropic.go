@@ -37,6 +37,11 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData)
 	var msgs []anthropic.MessageParam
 
 	for _, m := range pd.Messages {
+		// skip empty messages to avoid Anthropic API error
+		if m.Content == "" {
+			continue
+		}
+		
 		content := anthropic.NewTextBlock(m.Content)
 
 		switch m.Role {
