@@ -15,7 +15,7 @@ import (
 const (
 	maxIterations      = 100
 	maxHistorySize     = 20 // limit conversation history
-	aiCallTimeout      = 20 * time.Second
+	aiCallTimeout      = 100 * time.Second
 )
 
 // Message represents a single entry in the conversation history.
@@ -117,79 +117,62 @@ func (t *Task) forceToolUsage() {
 	t.promptData.AddMessage("user", t.promptData.GetForceToolsMessage())
 }
 
-// executeTools runs the parsed tool calls concurrently and updates conversation history.
+// executeTools runs the parsed tool calls sequentially with timeout and updates conversation history.
 // It returns true if the task is completed (attempt_completion).
 func (t *Task) executeTools(calls []ToolCall) (bool, error) {
 	fmt.Println(ui.Tool(fmt.Sprintf("Executing %d tools...", len(calls))))
 
 	// create a context with timeout for the entire tool execution
-	ctx, cancel := context.WithTimeout(t.ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
 	defer cancel()
 
-	// channel to collect results
-	type toolResult struct {
-		index int
-		call  ToolCall
-		res   string
-		err   error
-	}
-	
-	results := make(chan toolResult, len(calls))
-	var wg sync.WaitGroup
-
-	// launch all tools concurrently
 	for i, call := range calls {
-		wg.Add(1)
-		go func(index int, toolCall ToolCall) {
-			defer wg.Done()
-			
-			fmt.Printf("%s\n", ui.Blue(fmt.Sprintf("📋 Tool %d/%d: %s", index+1, len(calls), toolCall.Name)))
-			
-			// execute the tool directly
-			res, err := tools.Execute(toolCall.Name, toolCall.Args)
-			
-			results <- toolResult{
-				index: index,
-				call:  toolCall,
-				res:   res,
-				err:   err,
-			}
-		}(i, call)
-	}
-
-	// wait for all tools to complete
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	// collect and process results
-	completedTools := make([]toolResult, len(calls))
-	for result := range results {
 		select {
 		case <-ctx.Done():
 			return false, fmt.Errorf("tool execution timed out or was cancelled")
 		default:
 		}
-		
-		completedTools[result.index] = result
-	}
 
-	for _, result := range completedTools {
-		call := result.call
-		res := result.res
-		err := result.err
+		fmt.Printf("%s\n", ui.Blue(fmt.Sprintf("📋 Tool %d/%d: %s", i+1, len(calls), call.Name)))
+
+		// execute the tool with individual timeout
+		toolCtx, toolCancel := context.WithTimeout(ctx, 30*time.Second)
+		
+		// channel to receive result with timeout
+		resultChan := make(chan struct {
+			res string
+			err error
+		}, 1)
+		
+		go func() {
+			res, err := tools.Execute(call.Name, call.Args)
+			resultChan <- struct {
+				res string
+				err error
+			}{res, err}
+		}()
+		
+		var res string
+		var err error
+		
+		select {
+		case result := <-resultChan:
+			res = result.res
+			err = result.err
+		case <-toolCtx.Done():
+			err = fmt.Errorf("tool %s timed out after 2 minutes", call.Name)
+		}
+		
+		toolCancel()
 
 		if err != nil {
 			fmt.Println(ui.Error(fmt.Sprintf("Error running %s: %v", call.Name, err)))
 			if res != "" && !isSilentTool(call.Name) {
 				fmt.Printf("%s\n", ui.Dim("Result: "+res))
 			}
-			
 			t.mu.Lock()
 			t.promptData.AddMessage("user", fmt.Sprintf("Error executing %s: %v. Result: %s", call.Name, err, res))
 			t.mu.Unlock()
-			
 			continue
 		}
 
@@ -208,7 +191,6 @@ func (t *Task) executeTools(calls []ToolCall) (bool, error) {
 				if call.Name == "attempt_completion" {
 					// highlight the final summary for clarity
 					fmt.Println(ui.Info(res))
-					
 					return true, nil
 				} else {
 					fmt.Printf("%s\n", ui.Dim("Result: "+res))
@@ -219,6 +201,10 @@ func (t *Task) executeTools(calls []ToolCall) (bool, error) {
 					t.mu.Unlock()
 				}
 			}
+		}
+
+		if call.Name == "attempt_completion" {
+			return true, nil
 		}
 	}
 
