@@ -32,12 +32,7 @@ func NewAnthropic() (*AnthropicClient, error) {
 }
 
 // GenerateCode generates AI response using Anthropic API
-func (c *AnthropicClient) GenerateCode(pd *task.PromptData) (string, error) {
-	return c.GenerateCodeWithContext(context.Background(), pd)
-}
-
-// GenerateCodeWithContext converts PromptData into Anthropic Messages API call with context support
-func (c *AnthropicClient) GenerateCodeWithContext(ctx context.Context, pd *task.PromptData) (string, error) {
+func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData) (*task.AIResponse, error) {
 	// build message list from conversation history
 	var msgs []anthropic.MessageParam
 
@@ -105,36 +100,37 @@ func (c *AnthropicClient) GenerateCodeWithContext(ctx context.Context, pd *task.
 		})
 		if err != nil {
 			lastErr = err
-
 			continue
 		}
 
 		if len(resp.Content) == 0 {
-			return "", fmt.Errorf("anthropic response contained no content")
+			return nil, fmt.Errorf("anthropic response contained no content")
 		}
+
+		var toolCalls []task.ToolCall
+		var textContent string
 
 		for _, blk := range resp.Content {
 			switch blk.Type {
 			case "text":
-				return blk.Text, nil
+				textContent = blk.Text
 			case "tool_use":
-				var markdown string
-				markdown += "```" + blk.Name + "\n"
+				var obj map[string]interface{}
 				if len(blk.Input) > 0 {
-					var obj map[string]interface{}
 					_ = json.Unmarshal(blk.Input, &obj)
-					for k, v := range obj {
-						markdown += fmt.Sprintf("%s: %v\n", k, v)
-					}
 				}
-				markdown += "```"
-
-				return markdown, nil
+				toolCalls = append(toolCalls, task.ToolCall{
+					Name: blk.Name,
+					Args: obj,
+				})
 			}
 		}
 
-		return fmt.Sprintf("%+v", resp.Content[0]), nil
+		return &task.AIResponse{
+			Content:   textContent,
+			ToolCalls: toolCalls,
+		}, nil
 	}
 
-	return "", fmt.Errorf("all anthropic models unavailable, last error: %v", lastErr)
+	return nil, fmt.Errorf("all anthropic models unavailable, last error: %v", lastErr)
 }
