@@ -94,7 +94,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData)
 
 		resp, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
 			Model:      model,
-			MaxTokens:  int64(4096),
+			MaxTokens:  8000,
 			Messages:   msgs,
 			Tools:      anthropicTools,
 			ToolChoice: toolChoice,

@@ -89,7 +89,7 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData *task.Prompt
 			Messages:     messages,
 			Functions:    functions,
 			FunctionCall: "auto",
-			MaxTokens:    4096,
+			MaxTokens:    8000,
 		}
 
 		resp, err := o.client.CreateChatCompletion(ctx, req)
