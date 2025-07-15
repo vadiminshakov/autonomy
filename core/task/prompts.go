@@ -1,6 +1,7 @@
 package task
 
 import (
+	"autonomy/core/entity"
 	"autonomy/core/tools"
 )
 
@@ -46,19 +47,7 @@ Use the appropriate tool to accomplish the task.
 
 NO TEXT. TOOLS ONLY.`
 
-type ToolDefinition struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	InputSchema map[string]interface{} `json:"input_schema,omitempty"`
-}
-
-type PromptData struct {
-	SystemPrompt string
-	Messages     []Message
-	Tools        []ToolDefinition
-}
-
-func NewPromptData() *PromptData {
+func NewPromptData() *entity.PromptData {
 	// map of concise tool descriptions understandable by language models
 	toolDesc := map[string]string{
 		"get_project_structure": "View project directory tree in a textual form",
@@ -94,7 +83,7 @@ func NewPromptData() *PromptData {
 		"get_package_info":      "Get information about a package/module",
 	}
 
-	var defs []ToolDefinition
+	var defs []entity.ToolDefinition
 
 	for _, name := range tools.List() {
 		desc, ok := toolDesc[name]
@@ -205,24 +194,16 @@ func NewPromptData() *PromptData {
 			schema["required"] = []string{}
 		}
 
-		defs = append(defs, ToolDefinition{
+		defs = append(defs, entity.ToolDefinition{
 			Name:        name,
 			Description: desc,
 			InputSchema: schema,
 		})
 	}
 
-	return &PromptData{
+	return &entity.PromptData{
 		SystemPrompt: systemPrompt,
-		Messages:     []Message{},
+		Messages:     []entity.Message{},
 		Tools:        defs,
 	}
-}
-
-func (p *PromptData) AddMessage(role, content string) {
-	p.Messages = append(p.Messages, Message{Role: role, Content: content})
-}
-
-func (p *PromptData) GetForceToolsMessage() string {
-	return forceToolsMessage
 }
