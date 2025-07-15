@@ -117,6 +117,7 @@ func (t *Task) ProcessTask() error {
 
 		if done, err := t.executeTools(response.ToolCalls); err != nil {
 			fmt.Println(ui.Error("Tool execution error: " + err.Error()))
+			
 			continue
 		} else if done {
 			return nil
@@ -212,6 +213,7 @@ func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) 
 			fmt.Printf("%s\n", ui.Dim("Result: "+result))
 		}
 		t.addUserMessage(fmt.Sprintf("Error executing %s: %v. Result: %s", call.Name, err, result))
+		
 		return
 	}
 
@@ -225,21 +227,25 @@ func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) 
 			if call.Name == "attempt_completion" {
 				fmt.Println(ui.Info(result))
 			} else {
-				// limit output for verbose tools
-				if call.Name == "git_diff" || call.Name == "git_log" {
-					maxLines := 200
-					lines := strings.Split(result, "\n")
-					if len(lines) > maxLines {
-						truncated := strings.Join(lines[:maxLines], "\n")
-						result = truncated + fmt.Sprintf("\n... truncated, showing first %d of %d lines ...", maxLines, len(lines))
-					}
-				}
+				result = limitToolOutput(result)
 				fmt.Printf("%s\n", ui.Dim("Result: "+result))
 			}
 		}
 	}
 
 	t.addUserMessage(fmt.Sprintf("Result of %s: %s", call.Name, result))
+}
+
+// limitToolOutput truncates tool output if it's too verbose
+func limitToolOutput(result string) string {
+	maxLines := 10
+	lines := strings.Split(result, "\n")
+	if len(lines) > maxLines {
+		truncated := strings.Join(lines[:maxLines], "\n")
+		return truncated + "\n..."
+	}
+
+	return result
 }
 
 // Helper methods
