@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	"autonomy/core/entity"
 	"autonomy/core/tools"
 	"autonomy/ui"
 )
@@ -34,33 +36,17 @@ func defaultConfig() Config {
 	}
 }
 
-// Message represents a conversation entry
-type Message struct {
-	Role    string
-	Content string
-}
-
-// ToolCall describes a tool invocation
-type ToolCall struct {
-	Name string
-	Args map[string]interface{}
-}
-
-// AIResponse represents AI model response
-type AIResponse struct {
-	Content   string
-	ToolCalls []ToolCall
-}
-
 // AIClient abstracts AI model client
+//
+//go:generate mockgen -destination ../../mocks/ai_client_mock.go -package mocks autonomy/core/task AIClient
 type AIClient interface {
-	GenerateCode(ctx context.Context, promptData *PromptData) (*AIResponse, error)
+	GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error)
 }
 
 // Task manages AI-driven task execution
 type Task struct {
 	client     AIClient
-	promptData *PromptData
+	promptData *entity.PromptData
 	config     Config
 
 	mu          sync.RWMutex
@@ -145,7 +131,7 @@ func (t *Task) ProcessTask() error {
 }
 
 // callAi gets response from AI with rate limiting
-func (t *Task) callAi() (*AIResponse, error) {
+func (t *Task) callAi() (*entity.AIResponse, error) {
 	if err := t.enforceRateLimit(); err != nil {
 		return nil, fmt.Errorf("rate limit error: %v", err)
 	}
@@ -158,7 +144,7 @@ func (t *Task) callAi() (*AIResponse, error) {
 	promptCopy := t.copyPromptData()
 	t.mu.RUnlock()
 
-	response, err := t.client.GenerateCode(ctx, &promptCopy)
+	response, err := t.client.GenerateCode(ctx, promptCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +154,7 @@ func (t *Task) callAi() (*AIResponse, error) {
 }
 
 // executeTools runs tool calls sequentially
-func (t *Task) executeTools(calls []ToolCall) (bool, error) {
+func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
 	fmt.Println(ui.Tool(fmt.Sprintf("Executing %d tools...", len(calls))))
 
 	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
@@ -193,7 +179,7 @@ func (t *Task) executeTools(calls []ToolCall) (bool, error) {
 }
 
 // exec executes a single tool
-func (t *Task) exec(ctx context.Context, call ToolCall) (string, error) {
+func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
 	toolCtx, cancel := context.WithTimeout(ctx, t.config.ToolTimeout)
 	defer cancel()
 
@@ -219,7 +205,7 @@ func (t *Task) exec(ctx context.Context, call ToolCall) (string, error) {
 }
 
 // handleToolResult processes tool execution result
-func (t *Task) handleToolResult(call ToolCall, result string, err error) {
+func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) {
 	if err != nil {
 		fmt.Println(ui.Error(fmt.Sprintf("Error running %s: %v", call.Name, err)))
 		if result != "" && !isSilentTool(call.Name) {
@@ -239,6 +225,15 @@ func (t *Task) handleToolResult(call ToolCall, result string, err error) {
 			if call.Name == "attempt_completion" {
 				fmt.Println(ui.Info(result))
 			} else {
+				// limit output for verbose tools
+				if call.Name == "git_diff" || call.Name == "git_log" {
+					maxLines := 200
+					lines := strings.Split(result, "\n")
+					if len(lines) > maxLines {
+						truncated := strings.Join(lines[:maxLines], "\n")
+						result = truncated + fmt.Sprintf("\n... truncated, showing first %d of %d lines ...", maxLines, len(lines))
+					}
+				}
 				fmt.Printf("%s\n", ui.Dim("Result: "+result))
 			}
 		}
@@ -357,9 +352,9 @@ func (t *Task) enforceRateLimit() error {
 	return nil
 }
 
-func (t *Task) copyPromptData() PromptData {
+func (t *Task) copyPromptData() entity.PromptData {
 	promptCopy := *t.promptData
-	promptCopy.Messages = make([]Message, len(t.promptData.Messages))
+	promptCopy.Messages = make([]entity.Message, len(t.promptData.Messages))
 	copy(promptCopy.Messages, t.promptData.Messages)
 	return promptCopy
 }
