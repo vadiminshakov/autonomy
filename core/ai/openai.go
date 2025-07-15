@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"autonomy/core/task"
+	"autonomy/core/entity"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -18,7 +18,7 @@ type OpenAIClient struct {
 // OpenAIFormatter formats prompts for OpenAI's chat completion API
 type OpenAIFormatter struct{}
 
-func (f *OpenAIFormatter) FormatPrompt(data *task.PromptData) []openai.ChatCompletionMessage {
+func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCompletionMessage {
 	messages := []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleSystem,
@@ -52,7 +52,7 @@ func NewOpenai() (*OpenAIClient, error) {
 	}, nil
 }
 
-func convertTools(tools []task.ToolDefinition) []openai.FunctionDefinition {
+func convertTools(tools []entity.ToolDefinition) []openai.FunctionDefinition {
 	defs := make([]openai.FunctionDefinition, 0, len(tools))
 	for _, t := range tools {
 		params, _ := json.Marshal(t.InputSchema)
@@ -67,9 +67,9 @@ func convertTools(tools []task.ToolDefinition) []openai.FunctionDefinition {
 }
 
 // GenerateCode generates AI response using OpenAI API
-func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData *task.PromptData) (*task.AIResponse, error) {
+func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
 	formatter := &OpenAIFormatter{}
-	messages := formatter.FormatPrompt(promptData)
+	messages := formatter.FormatPrompt(&promptData)
 
 	// attach structured tool definitions
 	functions := convertTools(promptData.Tools)
@@ -114,9 +114,9 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData *task.Prompt
 				argObj = map[string]interface{}{"raw": choice.Message.FunctionCall.Arguments}
 			}
 
-			return &task.AIResponse{
+			return &entity.AIResponse{
 				Content: choice.Message.Content,
-				ToolCalls: []task.ToolCall{
+				ToolCalls: []entity.ToolCall{
 					{
 						Name: name,
 						Args: argObj,
@@ -125,7 +125,7 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData *task.Prompt
 			}, nil
 		}
 
-		return &task.AIResponse{
+		return &entity.AIResponse{
 			Content: choice.Message.Content,
 		}, nil
 	}

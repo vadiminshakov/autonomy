@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"autonomy/core/task"
+	"autonomy/core/entity"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -32,7 +32,7 @@ func NewAnthropic() (*AnthropicClient, error) {
 }
 
 // GenerateCode generates AI response using Anthropic API
-func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData) (*task.AIResponse, error) {
+func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData) (*entity.AIResponse, error) {
 	// build message list from conversation history
 	var msgs []anthropic.MessageParam
 
@@ -41,7 +41,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData)
 		if m.Content == "" {
 			continue
 		}
-		
+
 		content := anthropic.NewTextBlock(m.Content)
 
 		switch m.Role {
@@ -112,7 +112,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData)
 			return nil, fmt.Errorf("anthropic response contained no content")
 		}
 
-		var toolCalls []task.ToolCall
+		var toolCalls []entity.ToolCall
 		var textContent string
 
 		for _, blk := range resp.Content {
@@ -124,14 +124,14 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd *task.PromptData)
 				if len(blk.Input) > 0 {
 					_ = json.Unmarshal(blk.Input, &obj)
 				}
-				toolCalls = append(toolCalls, task.ToolCall{
+				toolCalls = append(toolCalls, entity.ToolCall{
 					Name: blk.Name,
 					Args: obj,
 				})
 			}
 		}
 
-		return &task.AIResponse{
+		return &entity.AIResponse{
 			Content:   textContent,
 			ToolCalls: toolCalls,
 		}, nil
