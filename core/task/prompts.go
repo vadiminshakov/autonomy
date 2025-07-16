@@ -71,7 +71,6 @@ func NewPromptData() *entity.PromptData {
 		"delete_file":           "Delete file by path",
 		"make_dir":              "Create directory",
 		"remove_dir":            "Remove directory and its contents",
-		"dependency_analyzer":   "Analyze Go module dependencies",
 		"go_test":               "Run go test",
 		"go_vet":                "Run go vet linter",
 		"build_index":           "Rebuild universal code index (Go/JS/TS/Python)",
@@ -137,12 +136,6 @@ func NewPromptData() *entity.PromptData {
 				"pattern": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"pattern"}
-
-		case "dependency_analyzer":
-			schema["properties"] = map[string]interface{}{
-				"action": map[string]interface{}{"type": "string", "enum": []string{"list", "outdated", "graph"}},
-			}
-			schema["required"] = []string{"action"}
 
 		case "go_test":
 			schema["properties"] = map[string]interface{}{
