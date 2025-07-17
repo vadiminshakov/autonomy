@@ -32,14 +32,21 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	out, err := cmd.CombinedOutput()
 
+	// Track command execution
+	state := getTaskState()
+	state.RecordCommandExecuted(cmdStr)
+
 	if ctx.Err() == context.DeadlineExceeded {
+		state.RecordToolUse("execute_command", false, "timeout")
 		return string(out), fmt.Errorf("command exceeded timeout of 30 seconds")
 	}
 
 	if err != nil {
+		state.RecordToolUse("execute_command", false, err.Error())
 		return string(out), fmt.Errorf("error executing command: %v", err)
 	}
 
+	state.RecordToolUse("execute_command", true, cmdStr)
 	return string(out), nil
 }
 
