@@ -5,47 +5,74 @@ import (
 	"autonomy/core/tools"
 )
 
-const systemPrompt = `You are an AI coding assistant. Solve tasks ONLY by calling tools.
+const systemPrompt = `You are an AI coding assistant with access to powerful tools.
 
-Code Index Available:
-• Multi-language support (Go, JavaScript, TypeScript, Python)
-• Auto-updated at startup with file change detection
-• Use search_index to find functions, classes, types across all languages
-• Use get_function/get_type for detailed symbol information
-• Use get_package_info for package/module overview
+DECISION TREE (follow in order):
+1. User requests a COMPLEX task (multiple files, analysis + modification) → Use plan_execution first
+2. User requests a SIMPLE action (read one file, analyze one file) → Use the appropriate tool directly
+3. User asks a CONCEPTUAL question → Provide explanation, then use attempt_completion
+4. You receive a TOOL RESULT → Analyze result and decide: continue with more tools OR use attempt_completion
+5. You have enough information to answer → Use attempt_completion immediately
+6. You're UNSURE what to do → Use the most relevant tool to gather information
 
-Rules:
-1. Your very first response must be a tool call – no explanations or planning text.
-2. Follow this workflow:
-   • get_project_structure
-   • search_index
-   • read_file
-   • execute_command (optional)
-   • write_file / apply_diff
-   • execute_command (build/test)
-   • repeat until success
-   • attempt_completion
+PLANNING GUIDELINES:
+• For tasks involving 3+ tools, use plan_execution to create an execution plan first
+• For tasks that modify multiple files or require complex analysis, use plan_execution
+• Simple tasks (read one file, analyze one file) don't need planning
+• Examples of complex tasks: "analyze all Go files", "refactor the codebase", "fix all issues"
+• Examples of simple tasks: "read api.go", "analyze main.go", "what is this function"
 
-Constraints:
-• write production-ready code (no TODOs)
-• after editing code always run tests and linter and fix all errors
-• handle errors gracefully and provide clear error messages
-• use timeouts and proper resource management
-• implement proper security checks
+CRITICAL COMPLETION RULES:
+- ALWAYS use attempt_completion when you have sufficient information to answer the user's question
+- Do NOT continue using tools indefinitely - be decisive about when to complete
+- If you've analyzed the requested file(s) and can provide an assessment, use attempt_completion
+- For analysis tasks: read file → analyze → attempt_completion (don't keep searching)
+- For conceptual questions: explain → attempt_completion
+- NEVER repeat the same tool with the same parameters multiple times
+- When completing, ALWAYS provide a clear description of what was accomplished in the result field
+- For complex multi-step tasks, consider using include_summary=true to provide detailed execution summary
 
-Error handling:
-• If a tool fails, analyze the error and try a different approach
-• Don't retry the same failing operation multiple times
-• Report meaningful error messages to the user
+CRITICAL RULES:
+- For action requests, you MUST use tools - text-only responses are forbidden
+- Trust the built-in repetition prevention - tools track their own usage
+- If a tool says "already used", don't retry it - use the previous results
+- Stop when you have enough information to complete the task
 
-BEGIN NOW.`
+EFFICIENCY GUIDELINES:
+• Focus on the specific task requested - do NOT expand scope without explicit permission
+• Build on existing work rather than starting over
+• When tools return "no matches found" repeatedly, stop searching and complete the task
+• Use attempt_completion as soon as you can provide a meaningful answer
 
-const forceToolsMessage = `ERROR: You must use tools!
+SCOPE FOCUS RULES:
+• When user specifies ONE file - analyze ONLY that file, then complete
+• When user says "изучи file.go" - read it, analyze it, then use attempt_completion
+• Don't search for additional files unless explicitly requested
+• Use attempt_completion when the requested scope is fully analyzed
+• NEVER expand analysis beyond the single file mentioned in the request
 
-You have access to many tools like get_project_structure, read_file, write_file, execute_command, etc.
-Use the appropriate tool to accomplish the task.
+Best Practices:
+• Be efficient and direct in accomplishing tasks
+• Complete tasks with attempt_completion as soon as you have sufficient information
+• Don't over-analyze or search endlessly
+• If searches return no results, conclude and complete the task
 
-NO TEXT. TOOLS ONLY.`
+Error Recovery:
+• If a tool fails with "already used" error, use previous results and complete the task
+• Don't retry failed operations repeatedly
+• The system will prevent harmful repetition automatically`
+
+const forceToolsMessage = `You MUST use a tool. Your previous response had no tool calls.
+
+Based on the user's request, execute one of these tools:
+- For file operations: read_file, write_file, apply_diff
+- For searching: search_dir, search_index, find_files
+- For analysis: analyze_code_go, get_project_structure
+- For execution: execute_command, go_test, go_vet
+- For completion: attempt_completion
+- For git operations: git_status, git_add, git_commit
+
+Choose the most appropriate tool for the task and execute it NOW.`
 
 func NewPromptData() *entity.PromptData {
 	// map of concise tool descriptions understandable by language models
@@ -63,7 +90,7 @@ func NewPromptData() *entity.PromptData {
 		"git_log":               "Show commit history",
 		"git_diff":              "Show git diff of changes",
 		"git_branch":            "Create, list or switch git branches",
-		"attempt_completion":    "Mark task as finished and provide final summary",
+		"attempt_completion":    "Mark task as finished and provide final summary. Optional: include_summary=true to add detailed execution summary",
 		"post_request":          "Send HTTP POST request and return response",
 		"get_request":           "Send HTTP GET request and return response",
 		"copy_file":             "Copy file from source path to destination",
@@ -83,6 +110,12 @@ func NewPromptData() *entity.PromptData {
 		"rename_symbol_go":      "Rename a Go symbol (function, variable, type) throughout the file",
 		"extract_function_go":   "Extract selected lines of Go code into a new function",
 		"inline_function_go":    "Inline a Go function call by replacing it with function body",
+		"get_task_state":        "Get current task execution state as JSON",
+		"get_task_summary":      "Get human-readable summary of task progress",
+		"reset_task_state":      "Reset task execution state",
+		"check_tool_usage":      "Check if and how many times a specific tool has been used",
+		"should_execute_tool":   "Optional: Check if a tool should be executed based on task state",
+		"plan_execution":        "Create an execution plan for complex tasks with multiple tools",
 	}
 
 	var defs []entity.ToolDefinition
@@ -209,6 +242,54 @@ func NewPromptData() *entity.PromptData {
 				"line_number":   map[string]string{"type": "number"},
 			}
 			schema["required"] = []string{"file", "function_name", "line_number"}
+
+		case "get_task_state", "get_task_summary", "reset_task_state":
+			schema["properties"] = map[string]interface{}{}
+			schema["required"] = []string{}
+
+		case "check_tool_usage":
+			schema["properties"] = map[string]interface{}{
+				"tool": map[string]string{"type": "string"},
+			}
+			schema["required"] = []string{"tool"}
+
+		case "should_execute_tool":
+			schema["properties"] = map[string]interface{}{
+				"tool":    map[string]string{"type": "string"},
+				"context": map[string]string{"type": "string"},
+			}
+			schema["required"] = []string{"tool"}
+
+		case "plan_execution":
+			schema["properties"] = map[string]interface{}{
+				"task_description": map[string]string{"type": "string"},
+				"tools_needed": map[string]interface{}{
+					"type": "array",
+					"items": map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"tool":   map[string]string{"type": "string"},
+							"args":   map[string]interface{}{"type": "object"},
+							"reason": map[string]string{"type": "string"},
+						},
+						"required": []string{"tool", "args", "reason"},
+					},
+				},
+			}
+			schema["required"] = []string{"task_description", "tools_needed"}
+
+		case "attempt_completion":
+			schema["properties"] = map[string]interface{}{
+				"result": map[string]string{
+					"type": "string",
+					"description": "Description of what was accomplished",
+				},
+				"include_summary": map[string]interface{}{
+					"type": "boolean",
+					"description": "Whether to include detailed execution summary (optional, default: false)",
+				},
+			}
+			schema["required"] = []string{}
 
 		default:
 			schema["properties"] = map[string]interface{}{}
