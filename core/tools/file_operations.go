@@ -40,6 +40,8 @@ func CopyFile(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("failed to copy file: %v", err)
 	}
 
+	getTaskState().RecordFileCreated(destPath)
+
 	return "File copied successfully", nil
 }
 
@@ -55,6 +57,8 @@ func MoveFile(args map[string]interface{}) (string, error) {
 	if err := os.Rename(srcPath, destPath); err != nil {
 		return "", fmt.Errorf("failed to move file: %v", err)
 	}
+
+	getTaskState().RecordFileModified(destPath)
 
 	return "File moved successfully", nil
 }
