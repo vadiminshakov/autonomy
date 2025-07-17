@@ -34,9 +34,12 @@ CRITICAL COMPLETION RULES:
 
 CRITICAL RULES:
 - For action requests, you MUST use tools - text-only responses are forbidden
-- Trust the built-in repetition prevention - tools track their own usage
+- Trust the built-in repetition prevention - tools track their own usage automatically
 - If a tool says "already used", don't retry it - use the previous results
+- Before using expensive tools (get_project_structure, build_index), check if they were already used
+- Use get_task_state or check_tool_usage to verify tool usage history when in doubt
 - Stop when you have enough information to complete the task
+- NEVER repeat the same tool with identical parameters multiple times
 
 EFFICIENCY GUIDELINES:
 • Focus on the specific task requested - do NOT expand scope without explicit permission
@@ -114,7 +117,6 @@ func NewPromptData() *entity.PromptData {
 		"get_task_summary":      "Get human-readable summary of task progress",
 		"reset_task_state":      "Reset task execution state",
 		"check_tool_usage":      "Check if and how many times a specific tool has been used",
-		"should_execute_tool":   "Optional: Check if a tool should be executed based on task state",
 		"plan_execution":        "Create an execution plan for complex tasks with multiple tools",
 	}
 
@@ -250,13 +252,6 @@ func NewPromptData() *entity.PromptData {
 		case "check_tool_usage":
 			schema["properties"] = map[string]interface{}{
 				"tool": map[string]string{"type": "string"},
-			}
-			schema["required"] = []string{"tool"}
-
-		case "should_execute_tool":
-			schema["properties"] = map[string]interface{}{
-				"tool":    map[string]string{"type": "string"},
-				"context": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"tool"}
 
