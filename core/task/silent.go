@@ -14,6 +14,7 @@ var silentTools = map[string]bool{
 	"find_files":            true,
 	"dependency_analyzer":   true,
 	"go_vet":                true,
+	"plan_execution":        true,
 }
 
 // isSilentTool checks if tool output should be summarized
@@ -81,6 +82,33 @@ func silentToolSummary(toolName string, args map[string]interface{}, result stri
 		}
 
 		return " - vet issues"
+
+	case "plan_execution":
+		if strings.Contains(result, "Execution Plan for:") {
+			// extract the task description
+			startIdx := strings.Index(result, "Execution Plan for: ")
+			if startIdx >= 0 {
+				startIdx += 19 // Length of "Execution Plan for: "
+				endIdx := strings.Index(result[startIdx:], "\n")
+				if endIdx >= 0 {
+					taskDesc := result[startIdx : startIdx+endIdx]
+					return fmt.Sprintf(" - created plan for: %s", taskDesc)
+				}
+			}
+
+			// extract step count
+			stepsIdx := strings.Index(result, "Total steps: ")
+			if stepsIdx >= 0 {
+				stepsIdx += 13 // Length of "Total steps: "
+				endIdx := strings.Index(result[stepsIdx:], "\n")
+				if endIdx >= 0 {
+					steps := result[stepsIdx : stepsIdx+endIdx]
+					return fmt.Sprintf(" - created plan with %s steps", steps)
+				}
+			}
+		}
+
+		return " - execution plan created"
 
 	default:
 		return ""
