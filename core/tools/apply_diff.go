@@ -216,6 +216,8 @@ func applyPatchWithValidation(patchFile, targetFile string) (string, error) {
 
 	fmt.Printf("%s Diff applied successfully to %s\n", ui.Success("SUCCESS"), ui.BrightWhite(targetFile))
 
+	getTaskState().RecordFileModified(targetFile)
+
 	return fmt.Sprintf("diff applied successfully to %s", targetFile), nil
 }
 
