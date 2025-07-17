@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -189,6 +190,21 @@ func (idx *Index) DetectLanguage(filePath string) Language {
 	}
 }
 
+type fileTask struct {
+	path    string
+	relPath string
+	lang    Language
+	parser  LanguageParser
+}
+
+type fileResult struct {
+	symbols []CodeSymbol
+	imports []UniversalImportInfo
+	lang    Language
+	relPath string
+	err     error
+}
+
 func (idx *Index) BuildIndex() error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -199,12 +215,19 @@ func (idx *Index) BuildIndex() error {
 	idx.Files = make(map[string]Language)
 	idx.Packages = make(map[string][]string)
 
+	var fileTasks []fileTask
+
 	err := filepath.WalkDir(idx.ProjectPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if d.IsDir() || strings.Contains(path, "vendor/") || strings.Contains(path, "node_modules/") {
+			return nil
+		}
+
+		// skip index file to prevent self-indexing
+		if strings.HasSuffix(path, ".index.json") {
 			return nil
 		}
 
@@ -223,21 +246,77 @@ func (idx *Index) BuildIndex() error {
 		}
 
 		relPath, _ := filepath.Rel(idx.ProjectPath, path)
-		idx.Files[relPath] = lang
+		
+		fileTasks = append(fileTasks, fileTask{
+			path:    path,
+			relPath: relPath,
+			lang:    lang,
+			parser:  parser,
+		})
 
-		if idx.Languages[lang] == nil {
-			idx.Languages[lang] = make([]string, 0)
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to collect files: %w", err)
+	}
+
+	numWorkers := runtime.NumCPU()
+	if numWorkers > len(fileTasks) {
+		numWorkers = len(fileTasks)
+	}
+
+	taskChan := make(chan fileTask, len(fileTasks))
+	resultChan := make(chan fileResult, len(fileTasks))
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskChan {
+				symbols, imports, err := task.parser.ParseFile(task.path)
+				resultChan <- fileResult{
+					symbols: symbols,
+					imports: imports,
+					lang:    task.lang,
+					relPath: task.relPath,
+					err:     err,
+				}
+			}
+		}()
+	}
+
+	for _, task := range fileTasks {
+		taskChan <- task
+	}
+	close(taskChan)
+
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	var firstErr error
+	for result := range resultChan {
+		if result.err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("failed to parse file %s: %w", result.relPath, result.err)
+			}
+			continue
 		}
-		idx.Languages[lang] = append(idx.Languages[lang], relPath)
 
-		symbols, imports, err := parser.ParseFile(path)
-		if err != nil {
-			return fmt.Errorf("failed to parse file %s: %w", path, err)
+		idx.Files[result.relPath] = result.lang
+
+		if idx.Languages[result.lang] == nil {
+			idx.Languages[result.lang] = make([]string, 0)
 		}
+		idx.Languages[result.lang] = append(idx.Languages[result.lang], result.relPath)
 
-		for _, symbol := range symbols {
-			symbol.Language = lang
-			symbol.File = relPath
+		for _, symbol := range result.symbols {
+			symbol.Language = result.lang
+			symbol.File = result.relPath
 			idx.Symbols[symbol.ID] = &symbol
 
 			if symbol.Package != "" {
@@ -245,19 +324,17 @@ func (idx *Index) BuildIndex() error {
 					idx.Packages[symbol.Package] = make([]string, 0)
 				}
 				
-				idx.Packages[symbol.Package] = append(idx.Packages[symbol.Package], relPath)
+				idx.Packages[symbol.Package] = append(idx.Packages[symbol.Package], result.relPath)
 			}
 		}
 
-		for _, imp := range imports {
+		for _, imp := range result.imports {
 			idx.Imports = append(idx.Imports, imp)
 		}
+	}
 
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to build universal index: %w", err)
+	if firstErr != nil {
+		return firstErr
 	}
 
 	idx.LastUpdated = time.Now()
