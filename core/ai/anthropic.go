@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"autonomy/core/entity"
 
@@ -35,6 +36,7 @@ func NewAnthropic() (*AnthropicClient, error) {
 func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData) (*entity.AIResponse, error) {
 	// build message list from conversation history
 	var msgs []anthropic.MessageParam
+	var lastUserMessage string
 
 	for _, m := range pd.Messages {
 		// skip empty messages to avoid Anthropic API error
@@ -47,6 +49,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 		switch m.Role {
 		case "user":
 			msgs = append(msgs, anthropic.NewUserMessage(content))
+			lastUserMessage = m.Content
 		case "assistant":
 			msgs = append(msgs, anthropic.NewAssistantMessage(content))
 		}
@@ -88,9 +91,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 	var lastErr error
 
 	for _, model := range models {
-		toolChoice := anthropic.ToolChoiceUnionParam{
-			OfAuto: &anthropic.ToolChoiceAutoParam{Type: constant.Auto("auto")},
-		}
+		toolChoice := determineToolChoice(lastUserMessage)
 
 		resp, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
 			Model:      model,
@@ -138,4 +139,140 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 	}
 
 	return nil, fmt.Errorf("all anthropic models unavailable, last error: %v", lastErr)
+}
+
+// determineToolChoice analyzes the user message to decide whether to force tool usage
+func determineToolChoice(userMessage string) anthropic.ToolChoiceUnionParam {
+	// convert to lowercase for case-insensitive matching
+	lowerMsg := strings.ToLower(userMessage)
+	
+	if isToolResultMessage(lowerMsg) {
+		return anthropic.ToolChoiceUnionParam{
+			OfAny: &anthropic.ToolChoiceAnyParam{Type: constant.Any("any")},
+		}
+	}
+	
+	msgType := analyzeMessageType(lowerMsg)
+	
+	switch msgType {
+	case "action":
+		// force tool usage for action requests
+		return anthropic.ToolChoiceUnionParam{
+			OfAny: &anthropic.ToolChoiceAnyParam{Type: constant.Any("any")},
+		}
+	case "question":
+		// let model decide for pure questions
+		return anthropic.ToolChoiceUnionParam{
+			OfAuto: &anthropic.ToolChoiceAutoParam{Type: constant.Auto("auto")},
+		}
+	default:
+		// when uncertain, prefer tool usage
+		return anthropic.ToolChoiceUnionParam{
+			OfAny: &anthropic.ToolChoiceAnyParam{Type: constant.Any("any")},
+		}
+	}
+}
+
+// isToolResultMessage checks if the message is a tool execution result
+func isToolResultMessage(msg string) bool {
+	// Structural patterns that indicate tool results
+	patterns := []string{
+		`^result of \w+:`,
+		`^error executing \w+:`,
+		`^✅ done \w+`,
+		`^❌ error in \w+`,
+		`tools used:`,
+		`files created:`,
+		`files modified:`,
+		`files read:`,
+		`commands executed:`,
+	}
+	
+	for _, pattern := range patterns {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+	
+	// check for common result indicators
+	resultIndicators := []string{
+		"result of ",
+		"error executing ",
+		"task state summary",
+		"✅ done",
+		"❌ error",
+		"successfully",
+		"failed to",
+		"completed",
+	}
+	
+	for _, indicator := range resultIndicators {
+		if strings.Contains(msg, indicator) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// analyzeMessageType determines if the message is an action request or question
+func analyzeMessageType(msg string) string {
+	// action keywords that indicate a tool should be used
+	actionKeywords := []string{
+		// english verbs
+		"read", "write", "create", "update", "delete", "execute", "run", "check",
+		"analyze", "search", "find", "look", "show", "display", "get", "fetch",
+		"test", "build", "compile", "fix", "modify", "edit", "rename", "move",
+		"copy", "list", "view", "examine", "inspect", "review", "implement",
+		"add", "remove", "install", "configure", "setup", "deploy", "debug",
+		// russian verbs
+		"прочитай", "читай", "посмотри", "покажи", "найди", "проверь", "запусти",
+		"создай", "удали", "измени", "исправь", "проанализируй", "выполни",
+		"протестируй", "собери", "скомпилируй", "переименуй", "скопируй",
+		"перемести", "отобрази", "изучи", "рассмотри", "реализуй", "добавь",
+		"установи", "настрой", "отладь",
+		// imperative patterns
+		"let's", "давай", "please", "пожалуйста", "can you", "could you",
+		"i need", "мне нужно", "необходимо", "требуется", "нужно",
+		"make", "do", "perform", "сделай", "выполни",
+	}
+	
+	// question keywords that typically don't need tools
+	questionKeywords := []string{
+		"what is", "what are", "what does", "what do",
+		"why is", "why are", "why does", "why do",
+		"how is", "how are", "how does", "how do",
+		"when is", "when are", "when does", "when do",
+		"where is", "where are", "where does", "where do",
+		"who is", "who are", "which is", "which are",
+		"explain", "describe", "tell me about",
+		// russian question patterns
+		"что такое", "что это", "почему", "как работает",
+		"когда", "где", "кто", "какой", "какая", "какие",
+		"объясни", "расскажи", "опиши",
+	}
+	
+	// check for question patterns first (more specific)
+	for _, keyword := range questionKeywords {
+		if strings.Contains(msg, keyword) {
+			// but override if it also contains strong action words
+			for _, action := range []string{"implement", "create", "write", "fix", "реализуй", "создай", "напиши", "исправь"} {
+				if strings.Contains(msg, action) {
+					return "action"
+				}
+			}
+
+			return "question"
+		}
+	}
+	
+	// check for action keywords
+	for _, keyword := range actionKeywords {
+		if strings.Contains(msg, keyword) {
+			return "action"
+		}
+	}
+	
+	// default to uncertain
+	return "uncertain"
 }
