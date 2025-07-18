@@ -8,18 +8,12 @@ import (
 	"autonomy/core/index"
 )
 
-func buildIndex(args map[string]any) (string, error) {
-	manager := index.GetIndexManager()
-
-	err := manager.RebuildIndex()
-	if err != nil {
-		return "", fmt.Errorf("index build failed: %w", err)
-	}
-
-	stats := manager.GetStats()
-	statsJson, _ := json.MarshalIndent(stats, "", "  ")
-
-	return fmt.Sprintf("Index rebuilt successfully\n\nStats:\n%s", string(statsJson)), nil
+func init() {
+	Register("search_index", searchIndex)
+	Register("get_index_stats", getIndexStats)
+	Register("get_function", getFunction)
+	Register("get_type", getType)
+	Register("get_package_info", getPackageInfo)
 }
 
 func searchIndex(args map[string]any) (string, error) {
