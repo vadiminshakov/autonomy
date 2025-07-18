@@ -3,11 +3,12 @@ package index
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/vadiminshakov/autonomy/ui"
 )
 
 type IndexManager struct {
@@ -139,15 +140,15 @@ func (im *IndexManager) buildIndex() {
 	select {
 	case err := <-done:
 		if err != nil {
-			fmt.Printf("Background indexing failed: %v\n", err)
+			ui.ShowIndexError(fmt.Sprintf("Background indexing failed: %v", err))
 			return
 		}
 
 		if err := im.index.SaveToFile(im.indexPath); err != nil {
-			fmt.Printf("Failed to save index: %v\n", err)
+			ui.ShowIndexError(fmt.Sprintf("Failed to save index: %v", err))
 		}
 	case <-ctx.Done():
-		fmt.Printf("Background indexing timed out\n")
+		ui.ShowIndexWarning("Background indexing timed out")
 	}
 }
 
@@ -261,7 +262,7 @@ func (im *IndexManager) StartAutoRebuild() {
 	im.autoRebuild = true
 
 	go im.periodicRebuild()
-	log.Println("Index auto-rebuild started with 20-minute interval")
+	ui.ShowIndexStatus("Index auto-rebuild started with 20-minute interval")
 }
 
 func (im *IndexManager) StopAutoRebuild() {
@@ -279,7 +280,7 @@ func (im *IndexManager) StopAutoRebuild() {
 	}
 	im.cancel()
 
-	log.Println("Index auto-rebuild stopped")
+	ui.ShowIndexStatus("Index auto-rebuild stopped")
 }
 
 // periodicRebuild runs in background and rebuilds index every 20 minutes
@@ -294,12 +295,12 @@ func (im *IndexManager) periodicRebuild() {
 			}
 			im.mu.RUnlock()
 
-			log.Println("Starting periodic index rebuild...")
+			ui.ShowIndexStatus("Starting periodic index rebuild...")
 			go func() {
 				if err := im.RebuildIndex(); err != nil {
-					log.Printf("Periodic index rebuild failed: %v", err)
+					ui.ShowIndexError(fmt.Sprintf("Periodic index rebuild failed: %v", err))
 				} else {
-					log.Println("Periodic index rebuild completed successfully")
+					ui.ShowIndexSuccess("Periodic index rebuild completed successfully")
 				}
 			}()
 

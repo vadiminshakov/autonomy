@@ -43,7 +43,6 @@ func (p *GoParser) ParseContent(content string, filePath string) ([]CodeSymbol, 
 	var symbols []CodeSymbol
 	var imports []UniversalImportInfo
 
-	packageName := node.Name.Name
 	relPath := filepath.Base(filePath)
 
 	for _, imp := range node.Imports {
@@ -54,35 +53,36 @@ func (p *GoParser) ParseContent(content string, filePath string) ([]CodeSymbol, 
 		}
 
 		imports = append(imports, UniversalImportInfo{
-			Path:      importPath,
-			Alias:     alias,
-			Language:  LanguageGo,
-			File:      relPath,
+			Path:     importPath,
+			Alias:    alias,
+			Language: LanguageGo,
+			File:     relPath,
 		})
 	}
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.FuncDecl:
-			if symbol := p.parseFunction(x, fset, packageName, relPath); symbol != nil {
+			if symbol := p.parseFunction(x, fset, node.Name.Name, relPath); symbol != nil {
 				symbols = append(symbols, *symbol)
 			}
 		case *ast.TypeSpec:
-			if symbol := p.parseType(x, fset, packageName, relPath); symbol != nil {
+			if symbol := p.parseType(x, fset, node.Name.Name, relPath); symbol != nil {
 				symbols = append(symbols, *symbol)
 			}
 		case *ast.GenDecl:
-			if symbol := p.parseGenDecl(x, fset, packageName, relPath); symbol != nil {
+			if symbol := p.parseGenDecl(x, fset, node.Name.Name, relPath); symbol != nil {
 				symbols = append(symbols, *symbol)
 			}
 		}
-		
+
 		return true
 	})
 
 	return symbols, imports, nil
 }
 
+//nolint:gocyclo
 func (p *GoParser) parseFunction(fn *ast.FuncDecl, fset *token.FileSet, packageName, filePath string) *CodeSymbol {
 	if fn.Name == nil {
 		return nil
@@ -91,10 +91,10 @@ func (p *GoParser) parseFunction(fn *ast.FuncDecl, fset *token.FileSet, packageN
 	pos := fset.Position(fn.Pos())
 	endPos := fset.Position(fn.End())
 	funcName := fn.Name.Name
-	
+
 	var receiver string
-	var kind SymbolKind = SymbolFunction
-	
+	var kind = SymbolFunction
+
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
 		if field := fn.Recv.List[0]; field.Type != nil {
 			receiver = fmt.Sprintf("%s", field.Type)
@@ -143,7 +143,7 @@ func (p *GoParser) parseFunction(fn *ast.FuncDecl, fset *token.FileSet, packageN
 	}
 
 	signature := p.buildFunctionSignature(funcName, params, returnType, receiver)
-	
+
 	var comment string
 	if fn.Doc != nil {
 		comment = strings.TrimSpace(fn.Doc.Text())
@@ -204,7 +204,7 @@ func (p *GoParser) parseType(ts *ast.TypeSpec, fset *token.FileSet, packageName,
 			for _, field := range t.Fields.List {
 				fieldType := fmt.Sprintf("%s", field.Type)
 				fieldVis := VisibilityPrivate
-				
+
 				if len(field.Names) > 0 {
 					for _, name := range field.Names {
 						if ast.IsExported(name.Name) {
@@ -292,7 +292,7 @@ func (p *GoParser) parseGenDecl(gd *ast.GenDecl, fset *token.FileSet, packageNam
 
 	var names []string
 	var typeStr string
-	
+
 	for _, spec := range gd.Specs {
 		if valueSpec, ok := spec.(*ast.ValueSpec); ok {
 			if valueSpec.Type != nil {
@@ -344,16 +344,16 @@ func (p *GoParser) parseGenDecl(gd *ast.GenDecl, fset *token.FileSet, packageNam
 
 func (p *GoParser) buildFunctionSignature(name string, params []Parameter, returnType, receiver string) string {
 	var sig strings.Builder
-	
+
 	if receiver != "" {
 		sig.WriteString(fmt.Sprintf("func (%s) ", receiver))
 	} else {
 		sig.WriteString("func ")
 	}
-	
+
 	sig.WriteString(name)
 	sig.WriteString("(")
-	
+
 	var paramStrs []string
 	for _, param := range params {
 		if param.Name != "" {
@@ -364,11 +364,11 @@ func (p *GoParser) buildFunctionSignature(name string, params []Parameter, retur
 	}
 	sig.WriteString(strings.Join(paramStrs, ", "))
 	sig.WriteString(")")
-	
+
 	if returnType != "" {
 		sig.WriteString(" ")
 		sig.WriteString(returnType)
 	}
-	
+
 	return sig.String()
 }
