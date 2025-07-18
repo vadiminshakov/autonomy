@@ -15,7 +15,7 @@ func init() {
 	Register("git_log", GitLog)
 	Register("git_diff", GitDiff)
 	Register("git_branch", GitBranch)
-	Register("git_merge_request_review", GitMergeRequestReview)
+	
 }
 
 // GitStatus shows the working tree status.
@@ -205,69 +205,4 @@ func GitBranch(args map[string]interface{}) (string, error) {
 	}
 }
 
-// GitMergeRequestReview interacts with GitHub CLI to list or view pull requests.
-// Supported actions: list (default) and view (requires 'number').
-func GitMergeRequestReview(args map[string]interface{}) (string, error) {
-	action, _ := args["action"].(string)
-	if action == "" {
-		action = "list"
-	}
 
-	// ensure we are inside a git repository
-	ctx1, cancel1 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel1()
-	if err := exec.CommandContext(ctx1, "git", "rev-parse", "--git-dir").Run(); err != nil {
-		return "", fmt.Errorf("not a git repository: %v", err)
-	}
-
-	switch action {
-	case "list":
-		// list pull request refs (GitHub style) if they exist
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, "git", "ls-remote", "--quiet", "--refs", "origin", "refs/pull/*/head")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return string(out), fmt.Errorf("git ls-remote failed: %v", err)
-		}
-		if len(out) == 0 {
-			return "no PR refs (refs/pull) found in origin", nil
-		}
-
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		return fmt.Sprintf("pull request refs:\n%s", strings.Join(lines, "\n")), nil
-
-	case "view":
-		number, ok := args["number"].(string)
-		if !ok || number == "" {
-			return "", fmt.Errorf("parameter 'number' is required for view action")
-		}
-
-		// fetch the pull request ref into a temporary branch
-		prRef := fmt.Sprintf("refs/pull/%s/head", number)
-		branch := fmt.Sprintf("pr-%s", number)
-
-		// fetch quietly
-		ctx1, cancel1 := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel1()
-		if err := exec.CommandContext(ctx1, "git", "fetch", "origin", fmt.Sprintf("%s:%s", prRef, branch)).Run(); err != nil {
-			return "", fmt.Errorf("failed to fetch PR: %v", err)
-		}
-
-		// show latest commit message for the PR branch
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel2()
-
-		cmd := exec.CommandContext(ctx2, "git", "log", "--oneline", "-n", "5", branch)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return string(out), fmt.Errorf("git log failed: %v", err)
-		}
-
-		return fmt.Sprintf("last commits in PR #%s:\n%s", number, string(out)), nil
-
-	default:
-		return "", fmt.Errorf("unknown action: %s", action)
-	}
-}
