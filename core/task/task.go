@@ -245,7 +245,7 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 			return false, err
 		}
 
-		fmt.Printf("%s\n", ui.Blue(fmt.Sprintf("📋 Tool %d", call.Name)))
+		fmt.Printf("%s\n", ui.Blue(fmt.Sprintf("📋 Tool %s", call.Name)))
 
 		spinner := ui.ShowToolExecution(call.Name)
 
@@ -303,7 +303,6 @@ func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
 // getToolTimeout returns appropriate timeout for different tool types
 func (t *Task) getToolTimeout(toolName string) time.Duration {
 	longRunningTools := map[string]time.Duration{
-		"build_index":     5 * time.Minute,
 		"execute_command": 3 * time.Minute,
 		"go_test":         2 * time.Minute,
 		"search_index":    2 * time.Minute,
