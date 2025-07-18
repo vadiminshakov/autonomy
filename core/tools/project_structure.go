@@ -116,6 +116,6 @@ func shouldIgnore(name string, patterns []string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
