@@ -1,44 +1,33 @@
 # Autonomy – AI Coding Agent in Go
 
+![Tests](https://github.com/vadiminshakov/autonomy/actions/workflows/test.yml/badge.svg)
+![Build](https://github.com/vadiminshakov/autonomy/actions/workflows/release.yml/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/vadiminshakov/autonomy)](https://goreportcard.com/report/github.com/vadiminshakov/autonomy)
+
 An experimental AI coding assistant written in Go.
 
-## Prerequisites
+## Install
 
-* Either an OpenAI or Anthropic API key
+```bash
+curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | bash
+```
 
-## Running
+Or with Go:
 
-1. Clone the repository and change into it:
+```bash
+go install github.com/vadiminshakov/autonomy@latest
+```
 
-   ```bash
-   git clone https://github.com/vadiminshakov/autonomy.git
-   cd autonomy
-   ```
+## Usage
 
-2. Export the API key for the provider you want to use:
+```bash
+# Set API key
+export OPENAI_API_KEY="your_key"  # or ANTHROPIC_API_KEY
 
-   ```bash
-   # OpenAI
-   export OPENAI_API_KEY="your_openai_api_key"
-   
-   # —- or —-
-   
-   # Anthropic
-   export ANTHROPIC_API_KEY="your_anthropic_api_key"
-   ```
-
-3. Start the agent (provider is detected automatically, or you can pass it explicitly):
-
-   ```bash
-   # automatic provider detection
-   go run .
-
-   # explicit provider selection
-   go run . -provider openai   # or -provider anthropic
-   ```
-
-The application will launch an interactive REPL where you can give the agent tasks and observe its reasoning and code edits.
+# Run
+autonomy
+```
 
 ## Contributing
 
-We welcome contributions of all kinds! If you have ideas, find a bug, or want to add a new feature, feel free to open an issue or submit a pull request.
+Pull requests welcome.
