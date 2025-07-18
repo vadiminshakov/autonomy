@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,6 +17,10 @@ type IndexManager struct {
 	mu          sync.RWMutex
 	initialized bool
 	building    bool
+	ticker      *time.Ticker
+	ctx         context.Context
+	cancel      context.CancelFunc
+	autoRebuild bool
 }
 
 var (
@@ -28,15 +33,18 @@ func GetIndexManager() *IndexManager {
 		wd, _ := os.Getwd()
 		globalIndexManager = NewIndexManager(wd)
 	})
-	
+
 	return globalIndexManager
 }
 
 func NewIndexManager(projectPath string) *IndexManager {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &IndexManager{
 		index:       NewIndex(projectPath),
-		indexPath:   filepath.Join(projectPath, ".index.json"),
+		indexPath:   filepath.Join(projectPath, ".autonomy/index.json"),
 		projectPath: projectPath,
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 }
 
@@ -239,4 +247,64 @@ func (im *IndexManager) GetSymbolsByKind(kind SymbolKind) []*CodeSymbol {
 	}
 
 	return im.index.GetSymbolsByKind(kind)
+}
+
+func (im *IndexManager) StartAutoRebuild() {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	if im.autoRebuild {
+		return // already running
+	}
+
+	im.ticker = time.NewTicker(20 * time.Minute)
+	im.autoRebuild = true
+
+	go im.periodicRebuild()
+	log.Println("Index auto-rebuild started with 20-minute interval")
+}
+
+func (im *IndexManager) StopAutoRebuild() {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+
+	if !im.autoRebuild {
+		return
+	}
+
+	im.autoRebuild = false
+	if im.ticker != nil {
+		im.ticker.Stop()
+		im.ticker = nil
+	}
+	im.cancel()
+
+	log.Println("Index auto-rebuild stopped")
+}
+
+// periodicRebuild runs in background and rebuilds index every 20 minutes
+func (im *IndexManager) periodicRebuild() {
+	for {
+		select {
+		case <-im.ticker.C:
+			im.mu.RLock()
+			if !im.autoRebuild {
+				im.mu.RUnlock()
+				return
+			}
+			im.mu.RUnlock()
+
+			log.Println("Starting periodic index rebuild...")
+			go func() {
+				if err := im.RebuildIndex(); err != nil {
+					log.Printf("Periodic index rebuild failed: %v", err)
+				} else {
+					log.Println("Periodic index rebuild completed successfully")
+				}
+			}()
+
+		case <-im.ctx.Done():
+			return
+		}
+	}
 }

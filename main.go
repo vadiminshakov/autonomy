@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"autonomy/core/ai"
+	"autonomy/core/index"
 	"autonomy/core/task"
 	"autonomy/terminal"
 	"autonomy/ui"
@@ -52,6 +53,13 @@ func main() {
 	if err != nil {
 		log.Fatal(ui.Error("failed to create AI client: " + err.Error()))
 	}
+
+	indexManager := index.GetIndexManager()
+	if err := indexManager.Initialize(); err != nil {
+		log.Printf("Warning: failed to initialize index manager: %v", err)
+	}
+	indexManager.StartAutoRebuild()
+	defer indexManager.StopAutoRebuild()
 
 	if err := terminal.RunTerminal(client); err != nil {
 		log.Fatal(err)
