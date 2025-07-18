@@ -37,16 +37,12 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	state.RecordCommandExecuted(cmdStr)
 
 	if ctx.Err() == context.DeadlineExceeded {
-		state.RecordToolUse("execute_command", false, "timeout")
 		return string(out), fmt.Errorf("command exceeded timeout of 30 seconds")
 	}
 
 	if err != nil {
-		state.RecordToolUse("execute_command", false, err.Error())
 		return string(out), fmt.Errorf("error executing command: %v", err)
 	}
-
-	state.RecordToolUse("execute_command", true, cmdStr)
 	return string(out), nil
 }
 
