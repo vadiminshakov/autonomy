@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	"autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/entity"
 
-	"github.com/sashabaranov/go-openai"
+	openai "github.com/sashabaranov/go-openai"
 )
 
 type OpenAIClient struct {

@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/entity"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 )
@@ -18,7 +18,7 @@ type AnthropicClient struct {
 	client *anthropic.Client
 }
 
-// NewAnthropic constructs a client authorised with ANTHROPIC_API_KEY.
+// NewAnthropic constructs a client authorized with ANTHROPIC_API_KEY.
 func NewAnthropic() (*AnthropicClient, error) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
@@ -145,15 +145,15 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 func determineToolChoice(userMessage string) anthropic.ToolChoiceUnionParam {
 	// convert to lowercase for case-insensitive matching
 	lowerMsg := strings.ToLower(userMessage)
-	
+
 	if isToolResultMessage(lowerMsg) {
 		return anthropic.ToolChoiceUnionParam{
 			OfAny: &anthropic.ToolChoiceAnyParam{Type: constant.Any("any")},
 		}
 	}
-	
+
 	msgType := analyzeMessageType(lowerMsg)
-	
+
 	switch msgType {
 	case "action":
 		// force tool usage for action requests
@@ -187,13 +187,13 @@ func isToolResultMessage(msg string) bool {
 		`files read:`,
 		`commands executed:`,
 	}
-	
+
 	for _, pattern := range patterns {
 		if strings.Contains(msg, pattern) {
 			return true
 		}
 	}
-	
+
 	// check for common result indicators
 	resultIndicators := []string{
 		"result of ",
@@ -205,13 +205,13 @@ func isToolResultMessage(msg string) bool {
 		"failed to",
 		"completed",
 	}
-	
+
 	for _, indicator := range resultIndicators {
 		if strings.Contains(msg, indicator) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -236,7 +236,7 @@ func analyzeMessageType(msg string) string {
 		"i need", "мне нужно", "необходимо", "требуется", "нужно",
 		"make", "do", "perform", "сделай", "выполни",
 	}
-	
+
 	// question keywords that typically don't need tools
 	questionKeywords := []string{
 		"what is", "what are", "what does", "what do",
@@ -251,7 +251,7 @@ func analyzeMessageType(msg string) string {
 		"когда", "где", "кто", "какой", "какая", "какие",
 		"объясни", "расскажи", "опиши",
 	}
-	
+
 	// check for question patterns first (more specific)
 	for _, keyword := range questionKeywords {
 		if strings.Contains(msg, keyword) {
@@ -265,14 +265,14 @@ func analyzeMessageType(msg string) string {
 			return "question"
 		}
 	}
-	
+
 	// check for action keywords
 	for _, keyword := range actionKeywords {
 		if strings.Contains(msg, keyword) {
 			return "action"
 		}
 	}
-	
+
 	// default to uncertain
 	return "uncertain"
 }
