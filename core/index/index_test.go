@@ -14,7 +14,7 @@ func TestDetectLanguage(t *testing.T) {
 		"app.py":      LanguagePython,
 		"unknown.xyz": LanguageUnknown,
 	}
-	
+
 	idx := NewIndex(".")
 	for file, want := range cases {
 		require.Equal(t, want, idx.DetectLanguage(file), "file %s", file)
