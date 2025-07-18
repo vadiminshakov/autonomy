@@ -1,0 +1,83 @@
+linters-settings:
+  govet:
+    shadow: true
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  misspell:
+    locale: US
+  lll:
+    line-length: 140
+  goimports:
+    local-prefixes: github.com/vadiminshakov/autonomy
+  depguard:
+    rules:
+      main:
+        allow:
+          - $gostd
+          - github.com/vadiminshakov/autonomy
+          - github.com/anthropics/anthropic-sdk-go
+          - github.com/sashabaranov/go-openai
+          - github.com/chzyer/readline
+          - github.com/stretchr/testify
+
+linters:
+  enable:
+    - bodyclose
+    - depguard
+    - dogsled
+    - dupl
+    - errcheck
+    - gocyclo
+    - gofmt
+    - goimports
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - rowserrcheck
+    - staticcheck
+    - stylecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gomnd
+        - gosec
+        - dupl
+        - lll
+        - gocyclo
+  exclude-dirs:
+    - bin
+    - vendor
+    - var
+    - tmp
+    - .git
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
+
+run:
+  timeout: 10m
+  issues-exit-code: 1
+  tests: true
+
+# golangci.com configuration
+# https://github.com/golangci/golangci-lint/blob/master/.golangci.yml
+service:
+  golangci-lint-version: 1.64.x 
