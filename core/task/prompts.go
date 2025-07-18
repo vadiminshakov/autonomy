@@ -103,7 +103,6 @@ func NewPromptData() *entity.PromptData {
 		"remove_dir":            "Remove directory and its contents",
 		"go_test":               "Run go test",
 		"go_vet":                "Run go vet linter",
-		"build_index":           "Rebuild universal code index (Go/JS/TS/Python)",
 		"search_index":          "Search functions/classes/types in universal code index",
 		"get_index_stats":       "Get statistics about universal code index",
 		"get_function":          "Get detailed information about a code symbol",
@@ -179,12 +178,6 @@ func NewPromptData() *entity.PromptData {
 			schema["required"] = []string{}
 
 		case "go_vet":
-			schema["properties"] = map[string]interface{}{
-				"path": map[string]string{"type": "string"},
-			}
-			schema["required"] = []string{}
-
-		case "build_index":
 			schema["properties"] = map[string]interface{}{
 				"path": map[string]string{"type": "string"},
 			}
