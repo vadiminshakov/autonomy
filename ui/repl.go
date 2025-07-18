@@ -1,44 +1,55 @@
 package ui
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"os/exec"
-	"runtime"
+	"io"
 	"strings"
 	"time"
+
+	"github.com/chzyer/readline"
 )
 
 // REPLCommands stores command history and provides REPL functionality
 type REPLCommands struct {
-	history []string
-	reader  *bufio.Reader
+	history  []string
+	readline *readline.Instance
 }
 
 // NewREPL creates a new REPL interface
 func NewREPL() *REPLCommands {
-	setupTerminal()
+	// configure readline with history and auto-completion
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:          "",
+		HistoryFile:     "/tmp/autonomy_history",
+		AutoComplete:    completer,
+		InterruptPrompt: "^C",
+		EOFPrompt:       "exit",
+		HistorySearchFold: true,
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	return &REPLCommands{
-		history: make([]string, 0),
-		reader:  bufio.NewReader(os.Stdin),
+		history:  make([]string, 0),
+		readline: rl,
 	}
 }
 
-// setupTerminal configures the terminal mode
-func setupTerminal() {
-	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
-		cmd := exec.Command("stty", "icanon", "echo")
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Run()
+// completer provides auto-completion for built-in commands
+var completer = readline.NewPrefixCompleter(
+	readline.PcItem("help"),
+	readline.PcItem("clear"),
+	readline.PcItem("history"),
+	readline.PcItem("exit"),
+)
+
+// Close releases REPL resources
+func (r *REPLCommands) Close() {
+	if r.readline != nil {
+		r.readline.Close()
 	}
 }
-
-// Close releases REPL resources (no-op)
-func (r *REPLCommands) Close() {}
 
 // ShowWelcome prints the welcome message
 func (r *REPLCommands) ShowWelcome() {
@@ -63,25 +74,20 @@ func (r *REPLCommands) GetPrompt() string {
 
 // ReadInput reads user input and handles built-in commands
 func (r *REPLCommands) ReadInput() (string, bool) {
-	fmt.Print(r.GetPrompt())
+	r.readline.SetPrompt(r.GetPrompt())
 
-	line, err := r.reader.ReadString('\n')
+	line, err := r.readline.Readline()
 	if err != nil {
+		if err == readline.ErrInterrupt {
+			return "", false
+		} else if err == io.EOF {
+			return "", true
+		}
 		return "", true
 	}
 
-	// remove trailing newlines and control characters
-	inputStr := strings.TrimRight(line, "\r\n")
-	inputStr = strings.TrimSpace(inputStr)
-
-	// filter out control characters (including ^M)
-	var filtered []rune
-	for _, r := range inputStr {
-		if r >= 32 || r == '\t' { // keep printable chars and tabs
-			filtered = append(filtered, r)
-		}
-	}
-	inputStr = string(filtered)
+	// trim whitespace
+	inputStr := strings.TrimSpace(line)
 
 	if inputStr == "" {
 		return "", false
