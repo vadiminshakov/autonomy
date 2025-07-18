@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="autonomy.exe"
+          else
+            BINARY_NAME="autonomy"
+          fi
+          
+          go build -ldflags="-s -w" -o "${BINARY_NAME}" .
+          
+          # Создаем архив
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "autonomy-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "${BINARY_NAME}"
+          else
+            tar -czf "autonomy-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${BINARY_NAME}"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomy-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            autonomy-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+            autonomy-${{ matrix.goos }}-${{ matrix.goarch }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true 
