@@ -1,4 +1,4 @@
-module autonomy
+module github.com/vadiminshakov/autonomy
 
 go 1.23
 
