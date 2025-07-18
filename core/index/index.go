@@ -227,7 +227,7 @@ func (idx *Index) BuildIndex() error {
 		}
 
 		// skip index file to prevent self-indexing
-		if strings.HasSuffix(path, ".index.json") {
+		if strings.HasSuffix(path, "index.json") {
 			return nil
 		}
 
