@@ -6,11 +6,11 @@ import (
 	"log"
 	"os"
 
-	"autonomy/core/ai"
-	"autonomy/core/index"
-	"autonomy/core/task"
-	"autonomy/terminal"
-	"autonomy/ui"
+	"github.com/vadiminshakov/autonomy/core/ai"
+	"github.com/vadiminshakov/autonomy/core/index"
+	"github.com/vadiminshakov/autonomy/core/task"
+	"github.com/vadiminshakov/autonomy/terminal"
+	"github.com/vadiminshakov/autonomy/ui"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 
 	indexManager := index.GetIndexManager()
 	if err := indexManager.Initialize(); err != nil {
-		log.Printf("Warning: failed to initialize index manager: %v", err)
+		ui.ShowIndexWarning(fmt.Sprintf("Failed to initialize index manager: %v", err))
 	}
 	indexManager.StartAutoRebuild()
 	defer indexManager.StopAutoRebuild()
