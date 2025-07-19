@@ -12,7 +12,7 @@ const (
 	colorBold  = "\033[1m"
 	colorDim   = "\033[2m"
 
-	// LFreground colors
+	// Foreground colors
 	colorRed    = "\033[31m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
@@ -21,7 +21,7 @@ const (
 	colorCyan   = "\033[36m"
 	colorWhite  = "\033[37m"
 
-	// LBight colors
+	// Bright colors
 	colorBrightRed    = "\033[91m"
 	colorBrightGreen  = "\033[92m"
 	colorBrightYellow = "\033[93m"
@@ -29,12 +29,6 @@ const (
 	colorBrightPurple = "\033[95m"
 	colorBrightCyan   = "\033[96m"
 	colorBrightWhite  = "\033[97m"
-
-	// LBckground colors
-	colorBgRed    = "\033[41m"
-	colorBgGreen  = "\033[42m"
-	colorBgYellow = "\033[43m"
-	colorBgBlue   = "\033[44m"
 )
 
 // Text coloring helpers

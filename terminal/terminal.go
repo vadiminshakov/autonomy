@@ -1,17 +1,18 @@
 package terminal
 
 import (
-	"autonomy/core/index"
-	"autonomy/core/task"
-	"autonomy/ui"
 	"fmt"
+
+	"github.com/vadiminshakov/autonomy/core/index"
+	"github.com/vadiminshakov/autonomy/core/task"
+	"github.com/vadiminshakov/autonomy/ui"
 )
 
 func RunTerminal(client task.AIClient) error {
 	indexManager := index.GetIndexManager()
 	go func() {
 		if err := indexManager.Initialize(); err != nil {
-			fmt.Printf("Warning: failed to initialize index: %v\n", err)
+			ui.ShowIndexWarning(fmt.Sprintf("Failed to initialize index: %v", err))
 		}
 	}()
 

@@ -19,11 +19,11 @@ type REPLCommands struct {
 func NewREPL() *REPLCommands {
 	// configure readline with history and auto-completion
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          "",
-		HistoryFile:     "/tmp/autonomy_history",
-		AutoComplete:    completer,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
+		Prompt:            "",
+		HistoryFile:       "/tmp/autonomy_history",
+		AutoComplete:      completer,
+		InterruptPrompt:   "^C",
+		EOFPrompt:         "exit",
 		HistorySearchFold: true,
 	})
 	if err != nil {

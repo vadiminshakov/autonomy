@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -22,4 +23,24 @@ func FormatAssistantResponse(resp string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// ShowIndexStatus displays index-related status messages in UI
+func ShowIndexStatus(message string) {
+	fmt.Println(Info("🔍 " + message))
+}
+
+// ShowIndexSuccess displays successful index operations
+func ShowIndexSuccess(message string) {
+	fmt.Println(Success("🔍 " + message))
+}
+
+// ShowIndexError displays index-related errors
+func ShowIndexError(message string) {
+	fmt.Println(Error("🔍 " + message))
+}
+
+// ShowIndexWarning displays index-related warnings
+func ShowIndexWarning(message string) {
+	fmt.Println(Warning("🔍 " + message))
 }
