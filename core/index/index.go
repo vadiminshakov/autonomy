@@ -262,6 +262,11 @@ func (idx *Index) BuildIndex() error {
 		return fmt.Errorf("failed to collect files: %w", err)
 	}
 
+
+	if len(fileTasks) == 0 {
+		return fmt.Errorf("no files found for indexing in project path: %s", idx.ProjectPath)
+	}
+
 	numWorkers := runtime.NumCPU()
 	if numWorkers > len(fileTasks) {
 		numWorkers = len(fileTasks)
@@ -292,6 +297,7 @@ func (idx *Index) BuildIndex() error {
 	for _, task := range fileTasks {
 		taskChan <- task
 	}
+
 	close(taskChan)
 
 	go func() {
