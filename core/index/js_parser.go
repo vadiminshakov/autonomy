@@ -69,7 +69,7 @@ func (p *JSParser) extractPackageName(content string, filePath string) string {
 	if match := packageRe.FindStringSubmatch(content); len(match) > 1 {
 		return match[1]
 	}
-	
+
 	base := filepath.Base(filePath)
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
@@ -141,33 +141,8 @@ func (p *JSParser) extractFunctions(content string, packageName string, filePath
 		paramsStr := match[2]
 		returnType := strings.TrimSpace(match[3])
 
-		params := p.parseParameters(paramsStr)
-		
-		visibility := VisibilityPrivate
-		if strings.Contains(match[0], "export") {
-			visibility = VisibilityPublic
-		}
-
-		isAsync := strings.Contains(match[0], "async")
-
-		signature := p.buildJSFunctionSignature(name, params, returnType, isAsync)
-		fullName := fmt.Sprintf("%s.%s", packageName, name)
-
-		symbols = append(symbols, CodeSymbol{
-			ID:         fullName,
-			Name:       name,
-			FullName:   fullName,
-			Kind:       SymbolFunction,
-			Package:    packageName,
-			File:       filePath,
-			Signature:  signature,
-			Visibility: visibility,
-			IsAsync:    isAsync,
-			ReturnType: returnType,
-			Parameters: params,
-			Tags:       make(map[string]string),
-			Metadata:   make(map[string]any),
-		})
+		symbol := p.createFunctionSymbol(name, paramsStr, returnType, match[0], packageName, filePath)
+		symbols = append(symbols, symbol)
 	}
 
 	arrowRe := regexp.MustCompile(`(?m)^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*(?::\s*([^=]+))?\s*=>\s*`)
@@ -178,36 +153,41 @@ func (p *JSParser) extractFunctions(content string, packageName string, filePath
 		paramsStr := match[2]
 		returnType := strings.TrimSpace(match[3])
 
-		params := p.parseParameters(paramsStr)
-		
-		visibility := VisibilityPrivate
-		if strings.Contains(match[0], "export") {
-			visibility = VisibilityPublic
-		}
-
-		isAsync := strings.Contains(match[0], "async")
-
-		signature := p.buildJSFunctionSignature(name, params, returnType, isAsync)
-		fullName := fmt.Sprintf("%s.%s", packageName, name)
-
-		symbols = append(symbols, CodeSymbol{
-			ID:         fullName,
-			Name:       name,
-			FullName:   fullName,
-			Kind:       SymbolFunction,
-			Package:    packageName,
-			File:       filePath,
-			Signature:  signature,
-			Visibility: visibility,
-			IsAsync:    isAsync,
-			ReturnType: returnType,
-			Parameters: params,
-			Tags:       make(map[string]string),
-			Metadata:   make(map[string]any),
-		})
+		symbol := p.createFunctionSymbol(name, paramsStr, returnType, match[0], packageName, filePath)
+		symbols = append(symbols, symbol)
 	}
 
 	return symbols
+}
+
+func (p *JSParser) createFunctionSymbol(name, paramsStr, returnType, fullMatch, packageName, filePath string) CodeSymbol {
+	params := p.parseParameters(paramsStr)
+
+	visibility := VisibilityPrivate
+	if strings.Contains(fullMatch, "export") {
+		visibility = VisibilityPublic
+	}
+
+	isAsync := strings.Contains(fullMatch, "async")
+
+	signature := p.buildJSFunctionSignature(name, params, returnType, isAsync)
+	fullName := fmt.Sprintf("%s.%s", packageName, name)
+
+	return CodeSymbol{
+		ID:         fullName,
+		Name:       name,
+		FullName:   fullName,
+		Kind:       SymbolFunction,
+		Package:    packageName,
+		File:       filePath,
+		Signature:  signature,
+		Visibility: visibility,
+		IsAsync:    isAsync,
+		ReturnType: returnType,
+		Parameters: params,
+		Tags:       make(map[string]string),
+		Metadata:   make(map[string]any),
+	}
 }
 
 func (p *JSParser) extractClasses(content string, packageName string, filePath string) []CodeSymbol {
@@ -297,7 +277,9 @@ func (p *JSParser) extractInterfaces(content string, packageName string, filePat
 func (p *JSParser) extractVariables(content string, packageName string, filePath string) []CodeSymbol {
 	var symbols []CodeSymbol
 
-	varRe := regexp.MustCompile(`(?m)^(?:export\s+)?(?:const|let|var)\s+(\w+)(?:\s*:\s*([^=]+))?\s*=\s*(?!(?:async\s+)?\(|class\s+|function\s+)`)
+	// Go's regex doesn't support negative lookahead, so we'll use a simpler pattern
+	varPattern := `(?m)^(?:export\s+)?(?:const|let|var)\s+(\w+)(?:\s*:\s*([^=]+))?\s*=\s*`
+	varRe := regexp.MustCompile(varPattern)
 	matches := varRe.FindAllStringSubmatch(content, -1)
 
 	for _, match := range matches {
@@ -379,7 +361,7 @@ func (p *JSParser) extractTypes(content string, packageName string, filePath str
 
 func (p *JSParser) parseParameters(paramsStr string) []Parameter {
 	var params []Parameter
-	
+
 	if strings.TrimSpace(paramsStr) == "" {
 		return params
 	}

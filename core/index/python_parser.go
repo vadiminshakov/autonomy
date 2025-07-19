@@ -64,7 +64,10 @@ func (p *PythonParser) extractPackageName(filePath string) string {
 func (p *PythonParser) extractImports(content string, filePath string) []UniversalImportInfo {
 	var imports []UniversalImportInfo
 
-	importRe := regexp.MustCompile(`(?m)^(?:from\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s+)?import\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?`)
+	importPattern := `(?m)^(?:from\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s+)?` +
+		`import\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)` +
+		`(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?`
+	importRe := regexp.MustCompile(importPattern)
 	matches := importRe.FindAllStringSubmatch(content, -1)
 
 	for _, match := range matches {
@@ -111,7 +114,7 @@ func (p *PythonParser) extractFunctions(content string, packageName string, file
 		returnType := strings.TrimSpace(match[4])
 
 		params := p.parseParameters(paramsStr)
-		
+
 		visibility := VisibilityPrivate
 		if !strings.HasPrefix(name, "_") {
 			visibility = VisibilityPublic
@@ -119,7 +122,7 @@ func (p *PythonParser) extractFunctions(content string, packageName string, file
 
 		isStatic := false
 		kind := SymbolFunction
-		
+
 		if len(params) > 0 && (params[0].Name == "self" || params[0].Name == "cls") {
 			kind = SymbolMethod
 			if params[0].Name == "cls" {
@@ -128,7 +131,7 @@ func (p *PythonParser) extractFunctions(content string, packageName string, file
 		}
 
 		docstring := p.extractDocstring(content, match[0])
-		
+
 		signature := p.buildPythonFunctionSignature(name, params, returnType, isStatic)
 		fullName := fmt.Sprintf("%s.%s", packageName, name)
 
@@ -181,7 +184,7 @@ func (p *PythonParser) extractClasses(content string, packageName string, filePa
 		}
 
 		docstring := p.extractDocstring(content, match[0])
-		
+
 		signature := fmt.Sprintf("class %s", name)
 		if parent != "" {
 			signature += fmt.Sprintf("(%s)", parent)
@@ -258,7 +261,7 @@ func (p *PythonParser) extractVariables(content string, packageName string, file
 
 func (p *PythonParser) parseParameters(paramsStr string) []Parameter {
 	var params []Parameter
-	
+
 	if strings.TrimSpace(paramsStr) == "" {
 		return params
 	}
@@ -360,21 +363,21 @@ func (p *PythonParser) extractDocstring(content string, defLine string) string {
 
 	remaining := content[defIndex+len(defLine):]
 	lines := strings.Split(remaining, "\n")
-	
+
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		
+
 		if strings.HasPrefix(trimmed, `"""`) || strings.HasPrefix(trimmed, `'''`) {
 			quote := trimmed[:3]
 			docstring := trimmed[3:]
-			
+
 			if strings.HasSuffix(trimmed, quote) && len(trimmed) > 6 {
 				return strings.TrimSuffix(docstring, quote)
 			}
-			
+
 			for j := i + 1; j < len(lines); j++ {
 				if strings.Contains(lines[j], quote) {
 					endIndex := strings.Index(lines[j], quote)
@@ -384,10 +387,10 @@ func (p *PythonParser) extractDocstring(content string, defLine string) string {
 				docstring += "\n" + lines[j]
 			}
 		}
-		
+
 		break
 	}
-	
+
 	return ""
 }
 
