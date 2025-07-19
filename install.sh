@@ -63,26 +63,54 @@ get_latest_release() {
     print_status "getting latest release information..."
     
     if command -v curl &> /dev/null; then
+        print_status "trying to get latest stable release..."
         # First try to get the latest stable release
         LATEST_RESPONSE=$(curl -s "$GITHUB_API_URL/releases/latest" 2>/dev/null)
         if [[ "$LATEST_RESPONSE" != *"Not Found"* ]] && [[ -n "$LATEST_RESPONSE" ]]; then
             LATEST_RELEASE=$(echo "$LATEST_RESPONSE" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//')
+            print_status "found stable release: $LATEST_RELEASE"
+        else
+            print_status "no stable release found, trying pre-releases..."
         fi
         
         # If no stable release found, get the most recent release (including pre-releases)
         if [[ -z "$LATEST_RELEASE" ]]; then
-            LATEST_RELEASE=$(curl -s "$GITHUB_API_URL/releases" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//' | head -1 2>/dev/null)
+            RELEASES_RESPONSE=$(curl -s "$GITHUB_API_URL/releases" 2>/dev/null)
+            if [[ -n "$RELEASES_RESPONSE" ]]; then
+                LATEST_RELEASE=$(echo "$RELEASES_RESPONSE" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//' | head -1)
+                if [[ -n "$LATEST_RELEASE" ]]; then
+                    print_status "found pre-release: $LATEST_RELEASE"
+                else
+                    print_error "no tag_name found in releases response"
+                fi
+            else
+                print_error "empty releases response"
+            fi
         fi
     elif command -v wget &> /dev/null; then
+        print_status "trying to get latest stable release..."
         # First try to get the latest stable release
         LATEST_RESPONSE=$(wget -qO- "$GITHUB_API_URL/releases/latest" 2>/dev/null)
         if [[ "$LATEST_RESPONSE" != *"Not Found"* ]] && [[ -n "$LATEST_RESPONSE" ]]; then
             LATEST_RELEASE=$(echo "$LATEST_RESPONSE" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//')
+            print_status "found stable release: $LATEST_RELEASE"
+        else
+            print_status "no stable release found, trying pre-releases..."
         fi
         
         # If no stable release found, get the most recent release (including pre-releases)
         if [[ -z "$LATEST_RELEASE" ]]; then
-            LATEST_RELEASE=$(wget -qO- "$GITHUB_API_URL/releases" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//' | head -1 2>/dev/null)
+            RELEASES_RESPONSE=$(wget -qO- "$GITHUB_API_URL/releases" 2>/dev/null)
+            if [[ -n "$RELEASES_RESPONSE" ]]; then
+                LATEST_RELEASE=$(echo "$RELEASES_RESPONSE" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//' | head -1)
+                if [[ -n "$LATEST_RELEASE" ]]; then
+                    print_status "found pre-release: $LATEST_RELEASE"
+                else
+                    print_error "no tag_name found in releases response"
+                fi
+            else
+                print_error "empty releases response"
+            fi
         fi
     else
         print_error "curl or wget is required to download binary"
