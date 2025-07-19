@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"autonomy/core/index"
+	"github.com/vadiminshakov/autonomy/core/index"
 )
 
 func init() {
@@ -87,9 +87,9 @@ func searchIndex(args map[string]any) (string, error) {
 func getIndexStats(args map[string]any) (string, error) {
 	manager := index.GetIndexManager()
 	stats := manager.GetStats()
-	statsJson, _ := json.MarshalIndent(stats, "", "  ")
+	statsJSON, _ := json.MarshalIndent(stats, "", "  ")
 
-	return fmt.Sprintf("Universal index statistics:\n%s", string(statsJson)), nil
+	return fmt.Sprintf("Universal index statistics:\n%s", string(statsJSON)), nil
 }
 
 func getFunction(args map[string]any) (string, error) {
