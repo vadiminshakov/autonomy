@@ -64,19 +64,25 @@ get_latest_release() {
     
     if command -v curl &> /dev/null; then
         # First try to get the latest stable release
-        LATEST_RELEASE=$(curl -s "$GITHUB_API_URL/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' 2>/dev/null)
+        LATEST_RESPONSE=$(curl -s "$GITHUB_API_URL/releases/latest" 2>/dev/null)
+        if [[ "$LATEST_RESPONSE" != *"Not Found"* ]] && [[ -n "$LATEST_RESPONSE" ]]; then
+            LATEST_RELEASE=$(echo "$LATEST_RESPONSE" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//')
+        fi
         
         # If no stable release found, get the most recent release (including pre-releases)
         if [[ -z "$LATEST_RELEASE" ]]; then
-            LATEST_RELEASE=$(curl -s "$GITHUB_API_URL/releases" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | head -1 2>/dev/null)
+            LATEST_RELEASE=$(curl -s "$GITHUB_API_URL/releases" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//' | head -1 2>/dev/null)
         fi
     elif command -v wget &> /dev/null; then
         # First try to get the latest stable release
-        LATEST_RELEASE=$(wget -qO- "$GITHUB_API_URL/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' 2>/dev/null)
+        LATEST_RESPONSE=$(wget -qO- "$GITHUB_API_URL/releases/latest" 2>/dev/null)
+        if [[ "$LATEST_RESPONSE" != *"Not Found"* ]] && [[ -n "$LATEST_RESPONSE" ]]; then
+            LATEST_RELEASE=$(echo "$LATEST_RESPONSE" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//')
+        fi
         
         # If no stable release found, get the most recent release (including pre-releases)
         if [[ -z "$LATEST_RELEASE" ]]; then
-            LATEST_RELEASE=$(wget -qO- "$GITHUB_API_URL/releases" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | head -1 2>/dev/null)
+            LATEST_RELEASE=$(wget -qO- "$GITHUB_API_URL/releases" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//; s/"//' | head -1 2>/dev/null)
         fi
     else
         print_error "curl or wget is required to download binary"
