@@ -12,6 +12,8 @@ func init() {
 }
 
 // WriteFile creates or overwrites a file at args["path"] with the provided content.
+//
+//nolint:gocyclo
 func WriteFile(args map[string]interface{}) (string, error) {
 	// support aliases: path, file, fileName, file_path
 	var pathVal string
@@ -51,9 +53,15 @@ func WriteFile(args map[string]interface{}) (string, error) {
 		}
 	}
 
+	// determine file permissions - preserve existing or use safe defaults
+	var fileMode os.FileMode = 0600 // safe default for new files
+	if info, err := os.Stat(cleanPath); err == nil {
+		fileMode = info.Mode().Perm() // preserve existing permissions
+	}
+
 	// write file atomically using temp file
 	tempFile := cleanPath + ".tmp"
-	if err := os.WriteFile(tempFile, []byte(contentVal), 0644); err != nil {
+	if err := os.WriteFile(tempFile, []byte(contentVal), fileMode); err != nil {
 		return "", fmt.Errorf("failed to write temp file %s: %v", tempFile, err)
 	}
 
@@ -62,6 +70,14 @@ func WriteFile(args map[string]interface{}) (string, error) {
 		// cleanup temp file on error
 		os.Remove(tempFile)
 		return "", fmt.Errorf("failed to rename temp file to %s: %v", pathVal, err)
+	}
+
+	// Track file creation/modification
+	state := getTaskState()
+	if _, err := os.Stat(cleanPath); err == nil {
+		state.RecordFileModified(cleanPath)
+	} else {
+		state.RecordFileCreated(cleanPath)
 	}
 
 	return fmt.Sprintf("file %s successfully written (%d bytes)", pathVal, len(contentVal)), nil
