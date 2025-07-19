@@ -31,6 +31,8 @@ func NewTaskSummarizer() *TaskSummarizer {
 }
 
 // GenerateSummary creates a summary from execution plan
+//
+//nolint:gocyclo
 func (ts *TaskSummarizer) GenerateSummary(plan *ExecutionPlan) *TaskSummary {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()

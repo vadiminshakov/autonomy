@@ -1,8 +1,9 @@
+//nolint:all
 package task
 
 import (
-	"autonomy/core/entity"
-	"autonomy/core/tools"
+	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/tools"
 )
 
 const systemPrompt = `You are an AI coding assistant with access to powerful tools.
@@ -269,11 +270,11 @@ func NewPromptData() *entity.PromptData {
 		case "attempt_completion":
 			schema["properties"] = map[string]interface{}{
 				"result": map[string]string{
-					"type": "string",
+					"type":        "string",
 					"description": "Description of what was accomplished",
 				},
 				"include_summary": map[string]interface{}{
-					"type": "boolean",
+					"type":        "boolean",
 					"description": "Whether to include detailed execution summary (optional, default: false)",
 				},
 			}

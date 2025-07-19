@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"autonomy/ui"
+	"github.com/vadiminshakov/autonomy/ui"
 )
 
 func init() {
@@ -227,7 +227,16 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+
+	// determine file permissions - preserve existing or use safe defaults
+	var fileMode os.FileMode = 0600 // safe default for new files
+	if info, err := os.Stat(dst); err == nil {
+		fileMode = info.Mode().Perm() // preserve existing permissions
+	} else if srcInfo, err := os.Stat(src); err == nil {
+		fileMode = srcInfo.Mode().Perm() // copy permissions from source
+	}
+
+	return os.WriteFile(dst, data, fileMode)
 }
 
 // restoreFile restores a file from backup

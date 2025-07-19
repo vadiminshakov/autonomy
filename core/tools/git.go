@@ -15,7 +15,6 @@ func init() {
 	Register("git_log", GitLog)
 	Register("git_diff", GitDiff)
 	Register("git_branch", GitBranch)
-	
 }
 
 // GitStatus shows the working tree status.
@@ -137,6 +136,8 @@ func GitDiff(args map[string]interface{}) (string, error) {
 }
 
 // GitBranch manages branches.
+//
+//nolint:gocyclo
 func GitBranch(args map[string]interface{}) (string, error) {
 	action, ok := args["action"].(string)
 	if !ok || action == "" {
@@ -204,5 +205,3 @@ func GitBranch(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("unknown action: %s. Allowed: list, create, checkout, delete", action)
 	}
 }
-
-

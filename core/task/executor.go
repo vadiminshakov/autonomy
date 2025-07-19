@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"autonomy/core/entity"
-	"autonomy/core/tools"
-	"autonomy/ui"
+	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/tools"
+	"github.com/vadiminshakov/autonomy/ui"
 )
 
 // ExecutionResult represents the result of a tool execution
@@ -156,13 +156,17 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *Exec
 }
 
 // worker is a worker goroutine that executes steps
-func (pe *ParallelExecutor) worker(ctx context.Context, wg *sync.WaitGroup, stepChan <-chan *ExecutionStep, resultChan chan<- ExecutionResult) {
+func (pe *ParallelExecutor) worker(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	stepChan <-chan *ExecutionStep,
+	resultChan chan<- ExecutionResult,
+) {
 	defer wg.Done()
 
 	for step := range stepChan {
 		select {
 		case <-ctx.Done():
-			// Context cancelled, send error result
 			resultChan <- ExecutionResult{
 				StepID:   step.ID,
 				ToolName: step.ToolName,
@@ -354,6 +358,7 @@ func (pe *ParallelExecutor) GetExecutionStats(plan *ExecutionPlan) map[string]in
 	}
 
 	var totalDuration time.Duration
+
 	for _, step := range plan.Steps {
 		switch step.Status {
 		case StepStatusCompleted:

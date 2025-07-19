@@ -1,14 +1,13 @@
 package tools
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestCopyFile(t *testing.T) {
-	srcFile, err := ioutil.TempFile("", "src_file_*.txt")
+	srcFile, err := os.CreateTemp("", "src_file_*.txt")
 	if err != nil {
 		t.Fatalf("Error creating source test file: %v", err)
 	}
@@ -37,7 +36,7 @@ func TestCopyFile(t *testing.T) {
 		t.Errorf("Destination file does not exist: %v", err)
 	}
 
-	content, err := ioutil.ReadFile(destPath)
+	content, err := os.ReadFile(destPath)
 	if err != nil {
 		t.Errorf("Error reading destination file: %v", err)
 	}
@@ -72,7 +71,7 @@ func TestCopyFile_MissingDest(t *testing.T) {
 
 func TestMoveAndDeleteFile(t *testing.T) {
 	// create temp src file
-	srcFile, err := ioutil.TempFile("", "move_src_*.txt")
+	srcFile, err := os.CreateTemp("", "move_src_*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create src temp file: %v", err)
 	}

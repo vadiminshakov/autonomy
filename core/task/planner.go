@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/entity"
 )
 
 // ExecutionStep represents a single step in the execution plan
@@ -90,6 +90,8 @@ func (p *Planner) CreatePlan(toolCalls []entity.ToolCall) *ExecutionPlan {
 }
 
 // inferDependencies infers dependencies based on tool types and arguments
+//
+//nolint:gocyclo
 func (p *Planner) inferDependencies(current entity.ToolCall, previous []entity.ToolCall) []string {
 	var deps []string
 

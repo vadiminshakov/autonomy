@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"autonomy/core/entity"
-	"autonomy/core/tools"
-	"autonomy/ui"
+	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/tools"
+	"github.com/vadiminshakov/autonomy/ui"
 )
 
 // Config holds task execution configuration
@@ -56,7 +56,7 @@ type Task struct {
 	lastAPICall time.Time
 
 	// Planning components
-	planner    *Planner
+	planner *Planner
 }
 
 // NewTask creates a new task with default configuration
@@ -262,7 +262,6 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 	return false, nil
 }
 
-
 // checkCompletion checks if the execution plan indicates task completion
 func (t *Task) checkCompletion(plan *ExecutionPlan) bool {
 	for _, step := range plan.Steps {
@@ -370,7 +369,7 @@ func limitToolOutput(result string) string {
 func (t *Task) checkCancellation() error {
 	select {
 	case <-t.ctx.Done():
-		return fmt.Errorf("task cancelled: %v", t.ctx.Err())
+		return fmt.Errorf("task canceled: %v", t.ctx.Err())
 	default:
 		return nil
 	}
@@ -379,7 +378,7 @@ func (t *Task) checkCancellation() error {
 func (t *Task) checkContext(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("operation timed out or was cancelled")
+		return fmt.Errorf("operation timed out or was canceled")
 	default:
 		return nil
 	}
