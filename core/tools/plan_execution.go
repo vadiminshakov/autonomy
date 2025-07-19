@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/entity"
 )
 
 func init() {
@@ -54,6 +54,8 @@ func PlanExecution(args map[string]interface{}) (string, error) {
 }
 
 // parseToolsNeeded converts the tools_needed argument to a list of entity.ToolCall
+//
+//nolint:gocyclo
 func parseToolsNeeded(toolsNeededRaw any) ([]entity.ToolCall, error) {
 	var toolCalls []entity.ToolCall
 
