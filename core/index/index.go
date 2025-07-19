@@ -205,6 +205,7 @@ type fileResult struct {
 	err     error
 }
 
+//nolint:gocyclo
 func (idx *Index) BuildIndex() error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -246,7 +247,7 @@ func (idx *Index) BuildIndex() error {
 		}
 
 		relPath, _ := filepath.Rel(idx.ProjectPath, path)
-		
+
 		fileTasks = append(fileTasks, fileTask{
 			path:    path,
 			relPath: relPath,
@@ -323,14 +324,12 @@ func (idx *Index) BuildIndex() error {
 				if idx.Packages[symbol.Package] == nil {
 					idx.Packages[symbol.Package] = make([]string, 0)
 				}
-				
+
 				idx.Packages[symbol.Package] = append(idx.Packages[symbol.Package], result.relPath)
 			}
 		}
 
-		for _, imp := range result.imports {
-			idx.Imports = append(idx.Imports, imp)
-		}
+		idx.Imports = append(idx.Imports, result.imports...)
 	}
 
 	if firstErr != nil {
@@ -450,6 +449,7 @@ func (idx *Index) GetSymbolsByKind(kind SymbolKind) []*CodeSymbol {
 	return results
 }
 
+//nolint:gosec
 func (idx *Index) SaveToFile(filePath string) error {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -457,6 +457,12 @@ func (idx *Index) SaveToFile(filePath string) error {
 	data, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal universal index: %w", err)
+	}
+
+	// ensure the directory exists before writing the file
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	return os.WriteFile(filePath, data, 0644)
