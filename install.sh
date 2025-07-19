@@ -63,9 +63,21 @@ get_latest_release() {
     print_status "getting latest release information..."
     
     if command -v curl &> /dev/null; then
+        # First try to get the latest stable release
         LATEST_RELEASE=$(curl -s "$GITHUB_API_URL/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' 2>/dev/null)
+        
+        # If no stable release found, get the most recent release (including pre-releases)
+        if [[ -z "$LATEST_RELEASE" ]]; then
+            LATEST_RELEASE=$(curl -s "$GITHUB_API_URL/releases" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | head -1 2>/dev/null)
+        fi
     elif command -v wget &> /dev/null; then
+        # First try to get the latest stable release
         LATEST_RELEASE=$(wget -qO- "$GITHUB_API_URL/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' 2>/dev/null)
+        
+        # If no stable release found, get the most recent release (including pre-releases)
+        if [[ -z "$LATEST_RELEASE" ]]; then
+            LATEST_RELEASE=$(wget -qO- "$GITHUB_API_URL/releases" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | head -1 2>/dev/null)
+        fi
     else
         print_error "curl or wget is required to download binary"
         exit 1
