@@ -9,7 +9,7 @@ An experimental AI coding assistant written in Go.
 ## Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | sudo bash
 ```
 
 Or with Go:
