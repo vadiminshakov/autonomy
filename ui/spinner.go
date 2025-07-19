@@ -90,9 +90,9 @@ func (s *Spinner) spin(ctx context.Context) {
 			message := s.message
 			s.mu.Unlock()
 
-			fmt.Printf("\r%s %s %s", 
-				BrightBlue(frame), 
-				BrightCyan("thinking..."), 
+			fmt.Printf("\r%s %s %s",
+				BrightBlue(frame),
+				BrightCyan("thinking..."),
 				Dim(message))
 
 			frameIndex = (frameIndex + 1) % len(s.frames)
@@ -106,6 +106,7 @@ func ShowThinking() *Spinner {
 	spinner.Start()
 	return spinner
 }
+
 // ShowToolExecution displays a spinner for tool execution
 func ShowToolExecution(toolName string) *Spinner {
 	spinner := NewSpinner(fmt.Sprintf("executing %s...", toolName))
