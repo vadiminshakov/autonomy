@@ -79,8 +79,16 @@ jobs:
         with:
           path: artifacts
 
+      - name: Prepare release files
+        run: |
+          find artifacts -name "*.tar.gz" -o -name "*.zip" | while read file; do
+            cp "$file" .
+          done
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: |
+            *.tar.gz
+            *.zip
           generate_release_notes: true 
