@@ -23,7 +23,7 @@ func GoTest(args map[string]interface{}) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	
+
 	cmd := exec.CommandContext(ctx, "go", "test", "-v", path)
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -43,7 +43,7 @@ func GoTest(args map[string]interface{}) (string, error) {
 			summaryLines = append(summaryLines, line)
 		}
 	}
-	
+
 	return strings.Join(summaryLines, "\n"), nil
 }
 
@@ -56,7 +56,7 @@ func GoVet(args map[string]interface{}) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	
+
 	cmd := exec.CommandContext(ctx, "go", "vet", path)
 	var out bytes.Buffer
 	cmd.Stdout = &out
