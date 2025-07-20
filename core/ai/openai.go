@@ -3,11 +3,10 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
+	"github.com/pkg/errors"
 	"github.com/vadiminshakov/autonomy/core/entity"
-
 	openai "github.com/sashabaranov/go-openai"
 )
 
@@ -76,13 +75,15 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 
 	// default model list (try the newest first, fall back if unavailable)
 	models := []string{
+		"o3",
 		"gpt-4o",
 		"gpt-4o-mini",
 		"gpt-4-turbo",
 		"gpt-3.5-turbo",
 	}
 
-	var lastErr error
+	var callErrs []error
+
 	for _, model := range models {
 		req := openai.ChatCompletionRequest{
 			Model:        model,
@@ -94,12 +95,12 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 
 		resp, err := o.client.CreateChatCompletion(ctx, req)
 		if err != nil {
-			lastErr = err
+			callErrs = append(callErrs, errors.Wrapf(err, "model %s", model))
 			continue
 		}
 
 		if len(resp.Choices) == 0 {
-			lastErr = errors.New("no response choices")
+			callErrs = append(callErrs, errors.New("no response choices"))
 			continue
 		}
 
@@ -130,5 +131,5 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		}, nil
 	}
 
-	return nil, fmt.Errorf("all OpenAI models are unavailable, last error: %v", lastErr)
+	return nil, fmt.Errorf("all OpenAI models are failed. Errors: %s", callErrs)
 }

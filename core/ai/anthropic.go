@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/vadiminshakov/autonomy/core/entity"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -84,11 +86,12 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 
 	// default model list (try the newest first, fall back if unavailable)
 	models := []anthropic.Model{
+		anthropic.ModelClaude4Sonnet20250514,
 		anthropic.ModelClaude3_7SonnetLatest,
 		anthropic.ModelClaude3_5SonnetLatest,
 	}
 
-	var lastErr error
+	var callErrs []error
 
 	for _, model := range models {
 		toolChoice := determineToolChoice(lastUserMessage)
@@ -105,12 +108,13 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 			}},
 		})
 		if err != nil {
-			lastErr = err
+			callErrs = append(callErrs, errors.Wrapf(err, "model %s", model))
 			continue
 		}
 
 		if len(resp.Content) == 0 {
-			return nil, fmt.Errorf("anthropic response contained no content")
+			callErrs = append(callErrs, errors.New("anthropic response contained no content"))
+			continue
 		}
 
 		var toolCalls []entity.ToolCall
@@ -138,7 +142,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 		}, nil
 	}
 
-	return nil, fmt.Errorf("all anthropic models unavailable, last error: %v", lastErr)
+	return nil, fmt.Errorf("all anthropic models failed. Errors: %s", callErrs)
 }
 
 // determineToolChoice analyzes the user message to decide whether to force tool usage
