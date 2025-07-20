@@ -4,7 +4,7 @@
 ![Build](https://github.com/vadiminshakov/autonomy/actions/workflows/release.yml/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/vadiminshakov/autonomy)](https://goreportcard.com/report/github.com/vadiminshakov/autonomy)
 
-An experimental AI coding assistant written in Go.
+An experimental AI coding agent written in Go.
 
 ![Demo](https://github.com/vadiminshakov/autonomy/releases/download/v0.0.0/demo.gif)
 
