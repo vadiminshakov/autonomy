@@ -6,6 +6,8 @@
 
 An experimental AI coding assistant written in Go.
 
+![Demo](https://github.com/vadiminshakov/autonomy/releases/download/v0.0.0/demo.gif)
+
 ## Install
 
 ```bash
