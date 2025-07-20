@@ -55,7 +55,6 @@ type Task struct {
 	noToolCount int
 	lastAPICall time.Time
 
-	// Planning components
 	planner *Planner
 }
 
@@ -170,18 +169,16 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 
 // executeTools runs tool calls
 func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
-	// check if we have a stored execution plan from plan_execution tool
 	if plan := t.getStoredPlan(); plan != nil {
 		return t.executePlan(plan)
 	}
 
-	// Check if we should use planning for this set of tool calls
 	if t.shouldUsePlanning(calls) {
 		plan := t.planner.CreatePlan(calls)
 		return t.executePlan(plan)
 	}
 
-	// Fall back to sequential execution for simple tasks
+	// fall back to sequential execution for simple tasks
 	return t.executeSequential(calls)
 }
 
@@ -206,8 +203,8 @@ func (t *Task) getStoredPlan() *ExecutionPlan {
 
 // shouldUsePlanning determines if a task should use planning based on complexity
 func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
-	// Use planning for tasks with multiple tools
-	if len(calls) >= 5 {
+	// use planning for tasks with multiple tools
+	if len(calls) >= 3 {
 		return true
 	}
 
@@ -230,11 +227,9 @@ func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
 // executePlan executes an execution plan using parallel execution
 func (t *Task) executePlan(plan *ExecutionPlan) (bool, error) {
 	fmt.Println(ui.Tool(fmt.Sprintf("Executing plan with %d steps...", len(plan.Steps))))
-
 	executor := NewParallelExecutor(4, 5*time.Minute)
 	err := executor.ExecutePlan(t.ctx, plan)
 	if err != nil {
-		log.Printf("Plan execution failed: %v", err)
 		return false, err
 	}
 
@@ -373,7 +368,6 @@ func limitToolOutput(result string) string {
 	return result
 }
 
-// Helper methods
 func (t *Task) checkCancellation() error {
 	select {
 	case <-t.ctx.Done():
