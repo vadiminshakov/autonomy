@@ -1,4 +1,4 @@
-# Autonomy – AI Coding Agent in Go
+# Autonomy – Go AI Coding Agent
 
 ![Tests](https://github.com/vadiminshakov/autonomy/actions/workflows/test.yml/badge.svg)
 ![Build](https://github.com/vadiminshakov/autonomy/actions/workflows/release.yml/badge.svg)
