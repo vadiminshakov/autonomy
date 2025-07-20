@@ -89,8 +89,6 @@ func NewPromptData() *entity.PromptData {
 		"search_dir":            "Search text pattern recursively in directory",
 		"find_files":            "Find files by glob pattern",
 		"git_status":            "Show git status of working tree",
-		"git_add":               "Stage files for git commit",
-		"git_commit":            "Create git commit with message",
 		"git_log":               "Show commit history",
 		"git_diff":              "Show git diff of changes",
 		"git_branch":            "Create, list or switch git branches",

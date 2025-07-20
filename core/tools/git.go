@@ -10,8 +10,6 @@ import (
 
 func init() {
 	Register("git_status", GitStatus)
-	Register("git_add", GitAdd)
-	Register("git_commit", GitCommit)
 	Register("git_log", GitLog)
 	Register("git_diff", GitDiff)
 	Register("git_branch", GitBranch)
@@ -34,44 +32,6 @@ func GitStatus(args map[string]interface{}) (string, error) {
 	}
 
 	return fmt.Sprintf("Git status:\n%s", result), nil
-}
-
-// GitAdd stages files.
-func GitAdd(args map[string]interface{}) (string, error) {
-	files, ok := args["files"].(string)
-	if !ok || files == "" {
-		files = "." // default: stage all files
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "git", "add", files)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), fmt.Errorf("git add failed: %v", err)
-	}
-
-	return fmt.Sprintf("Files staged: %s", files), nil
-}
-
-// GitCommit creates a commit.
-func GitCommit(args map[string]interface{}) (string, error) {
-	message, ok := args["message"].(string)
-	if !ok || message == "" {
-		return "", fmt.Errorf("parameter 'message' is required for git_commit")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "git", "commit", "-m", message)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), fmt.Errorf("git commit failed: %v", err)
-	}
-
-	return fmt.Sprintf("Commit created: %s\n%s", message, string(output)), nil
 }
 
 // GitLog shows commit history.
