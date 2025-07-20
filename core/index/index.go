@@ -141,15 +141,12 @@ func NewIndex(projectPath string) *Index {
 		parsers:     make(map[Language]LanguageParser),
 	}
 
-	ui.registerBuiltinParsers()
-	return ui
-}
+	ui.parsers[LanguageGo] = NewGoParser()
+	ui.parsers[LanguageJavaScript] = NewJSParser()
+	ui.parsers[LanguageTypeScript] = NewTSParser()
+	ui.parsers[LanguagePython] = NewPythonParser()
 
-func (idx *Index) registerBuiltinParsers() {
-	idx.RegisterParser(NewGoParser())
-	idx.RegisterParser(NewJSParser())
-	idx.RegisterParser(NewTSParser())
-	idx.RegisterParser(NewPythonParser())
+	return ui
 }
 
 func (idx *Index) RegisterParser(parser LanguageParser) {
@@ -494,8 +491,6 @@ func (idx *Index) LoadFromFile(filePath string) error {
 	idx.Packages = temp.Packages
 	idx.LastUpdated = temp.LastUpdated
 	idx.ProjectPath = temp.ProjectPath
-
-	idx.registerBuiltinParsers()
 
 	return nil
 }
