@@ -102,6 +102,8 @@ func (t *Task) ProcessTask() error {
 			return err
 		}
 
+		log.Printf("=== Task iteration %d/%d ===", iter+1, t.config.MaxIterations)
+
 		response, err := t.callAi()
 		if err != nil {
 			return t.handleAIError(err)
@@ -115,6 +117,12 @@ func (t *Task) ProcessTask() error {
 			}
 			continue
 		}
+
+		var toolNames []string
+		for _, call := range response.ToolCalls {
+			toolNames = append(toolNames, call.Name)
+		}
+		log.Printf("AI requested tools: %s", strings.Join(toolNames, ", "))
 
 		t.resetNoToolCount()
 
@@ -229,6 +237,8 @@ func (t *Task) executePlan(plan *ExecutionPlan) (bool, error) {
 		log.Printf("Plan execution failed: %v", err)
 		return false, err
 	}
+
+	t.addPlanResultsToHistory(plan)
 
 	return t.checkCompletion(plan), nil
 }
@@ -532,7 +542,7 @@ func (t *Task) enforceRateLimit() error {
 		waitTime := t.config.MinAPIInterval - elapsed
 		t.mu.Unlock()
 
-		fmt.Println(ui.Warning(fmt.Sprintf("Rate limit exceeded - waiting %v before next API call", waitTime)))
+		fmt.Println(ui.Warning(fmt.Sprintf("rate limit - waiting %v before next API call", waitTime)))
 
 		select {
 		case <-time.After(waitTime):
@@ -565,7 +575,7 @@ func (t *Task) handleAIError(err error) error {
 }
 
 // formatFindFilesArgs formats arguments for find_files tool display
-func formatFindFilesArgs(args map[string]interface{}) string {
+func formatFindFilesArgs(args map[string]any) string {
 	var parts []string
 
 	// extract path argument
@@ -597,4 +607,20 @@ func formatFindFilesArgs(args map[string]interface{}) string {
 	}
 
 	return strings.Join(parts, ", ")
+}
+
+// addPlanResultsToHistory adds execution results from completed plan steps to AI conversation
+func (t *Task) addPlanResultsToHistory(plan *ExecutionPlan) {
+	plan.mu.RLock()
+	defer plan.mu.RUnlock()
+
+	for _, step := range plan.Steps {
+		if step.Status == StepStatusCompleted || step.Status == StepStatusFailed {
+			call := entity.ToolCall{
+				Name: step.ToolName,
+				Args: step.Args,
+			}
+			t.handleToolResult(call, step.Result, step.Error)
+		}
+	}
 }
