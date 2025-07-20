@@ -245,8 +245,6 @@ func (t *Task) executePlan(plan *ExecutionPlan) (bool, error) {
 
 // executeSequential runs tool calls sequentially (fallback)
 func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
-	fmt.Println(ui.Tool(fmt.Sprintf("Executing %d tools sequentially...", len(calls))))
-
 	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
 	defer cancel()
 
