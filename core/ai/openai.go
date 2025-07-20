@@ -108,10 +108,10 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		// Handle function call
 		if choice.Message.FunctionCall != nil && choice.Message.FunctionCall.Name != "" {
 			name := choice.Message.FunctionCall.Name
-			var argObj map[string]interface{}
+			var argObj map[string]any
 			if err := json.Unmarshal([]byte(choice.Message.FunctionCall.Arguments), &argObj); err != nil {
 				// if parsing fails, return raw args string for debugging
-				argObj = map[string]interface{}{"raw": choice.Message.FunctionCall.Arguments}
+				argObj = map[string]any{"raw": choice.Message.FunctionCall.Arguments}
 			}
 
 			return &entity.AIResponse{

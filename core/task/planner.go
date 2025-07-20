@@ -11,15 +11,15 @@ import (
 
 // ExecutionStep represents a single step in the execution plan
 type ExecutionStep struct {
-	ID           string                 `json:"id"`
-	ToolName     string                 `json:"tool_name"`
-	Args         map[string]interface{} `json:"args"`
-	Dependencies []string               `json:"dependencies"`
-	Status       StepStatus             `json:"status"`
-	Result       string                 `json:"result,omitempty"`
-	Error        error                  `json:"error,omitempty"`
-	StartTime    *time.Time             `json:"start_time,omitempty"`
-	EndTime      *time.Time             `json:"end_time,omitempty"`
+	ID           string         `json:"id"`
+	ToolName     string         `json:"tool_name"`
+	Args         map[string]any `json:"args"`
+	Dependencies []string       `json:"dependencies"`
+	Status       StepStatus     `json:"status"`
+	Result       string         `json:"result,omitempty"`
+	Error        error          `json:"error,omitempty"`
+	StartTime    *time.Time     `json:"start_time,omitempty"`
+	EndTime      *time.Time     `json:"end_time,omitempty"`
 
 	// New fields for summarization
 	FilesAffected []string `json:"files_affected,omitempty"`

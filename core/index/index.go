@@ -262,7 +262,6 @@ func (idx *Index) BuildIndex() error {
 		return fmt.Errorf("failed to collect files: %w", err)
 	}
 
-
 	if len(fileTasks) == 0 {
 		return fmt.Errorf("no files found for indexing in project path: %s", idx.ProjectPath)
 	}

@@ -9,9 +9,9 @@ type Message struct {
 
 // ToolDefinition describes a single tool available to the LLM agent.
 type ToolDefinition struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	InputSchema map[string]interface{} `json:"input_schema,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"input_schema,omitempty"`
 }
 
 // PromptData aggregates all information required to build a prompt for the LLM.
@@ -41,8 +41,8 @@ func (p *PromptData) GetForceToolsMessage() string {
 
 // ToolCall describes a tool invocation requested by the LLM.
 type ToolCall struct {
-	Name string                 `json:"name"`
-	Args map[string]interface{} `json:"args"`
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
 }
 
 // AIResponse is a generic response from an LLM provider containing either plain text or a list of tool invocations.

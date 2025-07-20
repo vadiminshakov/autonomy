@@ -128,94 +128,94 @@ func NewPromptData() *entity.PromptData {
 			desc = "Internal tool " + name
 		}
 
-		schema := map[string]interface{}{
+		schema := map[string]any{
 			"type": "object",
 		}
 
 		switch name {
 		case "read_file":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"path"}
 
 		case "write_file":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path":    map[string]string{"type": "string"},
 				"content": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"path", "content"}
 
 		case "apply_diff":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path": map[string]string{"type": "string"},
 				"diff": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"path", "diff"}
 
 		case "execute_command":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"command": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"command"}
 
 		case "search_dir":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path":  map[string]string{"type": "string"},
 				"query": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"query"}
 
 		case "find_files":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"pattern": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"pattern"}
 
 		case "go_test":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{}
 
 		case "go_vet":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{}
 
 		case "search_index":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"query": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"query"}
 
 		case "get_function":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"key": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"key"}
 
 		case "get_type":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"key": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"key"}
 
 		case "get_package_info":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"package": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"package"}
 
 		case "analyze_code_go":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"path": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"path"}
 
 		case "rename_symbol_go":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"file":     map[string]string{"type": "string"},
 				"old_name": map[string]string{"type": "string"},
 				"new_name": map[string]string{"type": "string"},
@@ -223,7 +223,7 @@ func NewPromptData() *entity.PromptData {
 			schema["required"] = []string{"file", "old_name", "new_name"}
 
 		case "extract_function_go":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"file":          map[string]string{"type": "string"},
 				"start_line":    map[string]string{"type": "number"},
 				"end_line":      map[string]string{"type": "number"},
@@ -232,7 +232,7 @@ func NewPromptData() *entity.PromptData {
 			schema["required"] = []string{"file", "start_line", "end_line", "function_name"}
 
 		case "inline_function_go":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"file":          map[string]string{"type": "string"},
 				"function_name": map[string]string{"type": "string"},
 				"line_number":   map[string]string{"type": "number"},
@@ -240,25 +240,25 @@ func NewPromptData() *entity.PromptData {
 			schema["required"] = []string{"file", "function_name", "line_number"}
 
 		case "get_task_state", "get_task_summary", "reset_task_state":
-			schema["properties"] = map[string]interface{}{}
+			schema["properties"] = map[string]any{}
 			schema["required"] = []string{}
 
 		case "check_tool_usage":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"tool": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"tool"}
 
 		case "plan_execution":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"task_description": map[string]string{"type": "string"},
-				"tools_needed": map[string]interface{}{
+				"tools_needed": map[string]any{
 					"type": "array",
-					"items": map[string]interface{}{
+					"items": map[string]any{
 						"type": "object",
-						"properties": map[string]interface{}{
+						"properties": map[string]any{
 							"tool":   map[string]string{"type": "string"},
-							"args":   map[string]interface{}{"type": "object"},
+							"args":   map[string]any{"type": "object"},
 							"reason": map[string]string{"type": "string"},
 						},
 						"required": []string{"tool", "args", "reason"},
@@ -268,12 +268,12 @@ func NewPromptData() *entity.PromptData {
 			schema["required"] = []string{"task_description", "tools_needed"}
 
 		case "attempt_completion":
-			schema["properties"] = map[string]interface{}{
+			schema["properties"] = map[string]any{
 				"result": map[string]string{
 					"type":        "string",
 					"description": "Description of what was accomplished",
 				},
-				"include_summary": map[string]interface{}{
+				"include_summary": map[string]any{
 					"type":        "boolean",
 					"description": "Whether to include detailed execution summary (optional, default: false)",
 				},
@@ -281,7 +281,7 @@ func NewPromptData() *entity.PromptData {
 			schema["required"] = []string{}
 
 		default:
-			schema["properties"] = map[string]interface{}{}
+			schema["properties"] = map[string]any{}
 			schema["required"] = []string{}
 		}
 

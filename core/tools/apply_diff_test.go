@@ -28,7 +28,7 @@ func main() {
 	// create a valid unified diff
 	diff := "@@ -5,3 +5,4 @@\n func main() {\n \tfmt.Println(\"Hello, World!\")\n+\tfmt.Println(\"This is a test!\")\n }"
 
-	args := map[string]interface{}{
+	args := map[string]any{
 		"path": testFile,
 		"diff": diff,
 	}
@@ -54,7 +54,7 @@ func main() {
 }
 
 func TestApplyDiff_InvalidDiff(t *testing.T) {
-	args := map[string]interface{}{
+	args := map[string]any{
 		"path": "nonexistent.go",
 		"diff": "invalid diff content",
 	}

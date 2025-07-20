@@ -121,7 +121,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 			case "text":
 				textContent = blk.Text
 			case "tool_use":
-				var obj map[string]interface{}
+				var obj map[string]any
 				if len(blk.Input) > 0 {
 					_ = json.Unmarshal(blk.Input, &obj)
 				}

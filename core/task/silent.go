@@ -25,7 +25,7 @@ func isSilentTool(name string) bool {
 // silentToolSummary generates a concise summary for silent tool results
 //
 //nolint:gocyclo
-func silentToolSummary(toolName string, args map[string]interface{}, result string) string {
+func silentToolSummary(toolName string, args map[string]any, result string) string {
 	switch toolName {
 	case "read_file":
 		if path, ok := args["path"].(string); ok {

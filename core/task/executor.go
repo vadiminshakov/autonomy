@@ -64,7 +64,7 @@ func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *ExecutionPlan
 	}
 
 	// generate and display task summary using existing task state system
-	summaryResult, summaryErr := tools.Execute("get_task_summary", map[string]interface{}{})
+	summaryResult, summaryErr := tools.Execute("get_task_summary", map[string]any{})
 
 	fmt.Println(ui.Success("Plan execution completed successfully"))
 	if summaryErr == nil && summaryResult != "" {
@@ -204,7 +204,7 @@ func (pe *ParallelExecutor) executeStep(ctx context.Context, step *ExecutionStep
 }
 
 // executeToolWithTimeout executes a tool with timeout handling
-func (pe *ParallelExecutor) executeToolWithTimeout(ctx context.Context, toolName string, args map[string]interface{}) (string, error) {
+func (pe *ParallelExecutor) executeToolWithTimeout(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	resultChan := make(chan struct {
 		res string
 		err error
@@ -261,8 +261,6 @@ func (pe *ParallelExecutor) findStepInPlan(plan *ExecutionPlan, stepID string) *
 
 // ExecuteSequential executes steps sequentially (fallback for when parallel execution is not suitable)
 func (pe *ParallelExecutor) ExecuteSequential(ctx context.Context, toolCalls []entity.ToolCall) (bool, error) {
-	fmt.Println(ui.Tool(fmt.Sprintf("Executing %d tools sequentially...", len(toolCalls))))
-
 	for i, call := range toolCalls {
 		select {
 		case <-ctx.Done():
@@ -299,7 +297,7 @@ func (pe *ParallelExecutor) ExecuteSequential(ctx context.Context, toolCalls []e
 			if result != "" {
 				if call.Name == "attempt_completion" {
 					// Try to generate and include task summary using existing task state
-					summaryResult, summaryErr := pe.executeToolWithTimeout(ctx, "get_task_summary", map[string]interface{}{})
+					summaryResult, summaryErr := pe.executeToolWithTimeout(ctx, "get_task_summary", map[string]any{})
 					if summaryErr == nil && summaryResult != "" {
 						enhancedResult := result + "\n\n" + summaryResult
 						fmt.Println(ui.Info(enhancedResult))
@@ -346,11 +344,11 @@ func (pe *ParallelExecutor) ShouldUsePlanning(toolCalls []entity.ToolCall) bool 
 }
 
 // GetExecutionStats returns statistics about the execution
-func (pe *ParallelExecutor) GetExecutionStats(plan *ExecutionPlan) map[string]interface{} {
+func (pe *ParallelExecutor) GetExecutionStats(plan *ExecutionPlan) map[string]any {
 	plan.mu.RLock()
 	defer plan.mu.RUnlock()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_steps":     len(plan.Steps),
 		"completed_steps": 0,
 		"failed_steps":    0,
