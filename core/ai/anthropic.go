@@ -42,6 +42,8 @@ func NewAnthropic(cfg config.Config) (*AnthropicClient, error) {
 }
 
 // GenerateCode generates AI response using Anthropic API
+//
+//nolint:gocyclo
 func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData) (*entity.AIResponse, error) {
 	// build message list from conversation history
 	var msgs []anthropic.MessageParam
@@ -112,7 +114,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 
 	var resp *anthropic.Message
 	var err error
-	
+
 	if err = retry.Exponential(ctx, func() error {
 		resp, err = c.client.Messages.New(ctx, params)
 		return err
