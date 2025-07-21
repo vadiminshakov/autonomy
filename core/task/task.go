@@ -29,10 +29,10 @@ func defaultConfig() Config {
 	return Config{
 		MaxIterations:     100,
 		MaxHistorySize:    80,
-		AICallTimeout:     100 * time.Second,
+		AICallTimeout:     300 * time.Second,
 		ToolTimeout:       30 * time.Second,
-		MinAPIInterval:    3 * time.Second,
-		MaxNoToolAttempts: 3,
+		MinAPIInterval:    1 * time.Second,
+		MaxNoToolAttempts: 5,
 	}
 }
 
