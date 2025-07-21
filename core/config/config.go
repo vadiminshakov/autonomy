@@ -26,56 +26,6 @@ type Config struct {
 	Provider string `json:"provider"`
 }
 
-// NewConfigFromEnv creates a configuration for the specified provider from environment variables
-func NewConfigFromEnv(provider string) (Config, error) {
-	var cfg Config
-
-	switch provider {
-	case "openai":
-		cfg = newOpenAIConfig()
-	case "anthropic":
-		cfg = newAnthropicConfig()
-	default:
-		cfg = Config{Provider: provider}
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return cfg, err
-	}
-
-	return cfg, nil
-}
-
-func newOpenAIConfig() Config {
-	cfg := Config{
-		APIKey:   os.Getenv("OPENAI_API_KEY"),
-		BaseURL:  os.Getenv("OPENAI_BASE_URL"),
-		Provider: "openai",
-	}
-
-	if cfg.APIKey != "" && cfg.BaseURL == "" {
-		cfg.BaseURL = defaultOpenAIURL
-	}
-
-	if m := os.Getenv("OPENAI_MODEL"); m != "" {
-		cfg.Model = strings.TrimSpace(m)
-	}
-
-	return cfg
-}
-
-func newAnthropicConfig() Config {
-	cfg := Config{
-		APIKey:   os.Getenv("ANTHROPIC_API_KEY"),
-		Provider: "anthropic",
-	}
-
-	if cfg.APIKey != "" {
-		cfg.BaseURL = DefaultAnthropicURL
-	}
-
-	return cfg
-}
 
 // configFilePath builds the path to ~/.autonomy/config.json.
 func configFilePath() (string, error) {
@@ -307,21 +257,4 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
-}
-
-// DetectAvailableProvider detects the available provider from environment variables
-func DetectAvailableProvider() string {
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		return "anthropic"
-	}
-
-	// check OpenAI-compatible providers
-	if os.Getenv("OPENAI_API_KEY") != "" {
-		return "openai"
-	}
-	if os.Getenv("OPENAI_BASE_URL") != "" {
-		return "openai" // local model via OpenAI API
-	}
-
-	return ""
 }
