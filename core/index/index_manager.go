@@ -140,7 +140,6 @@ func (im *IndexManager) buildIndex() {
 	select {
 	case err := <-done:
 		if err != nil {
-			ui.ShowIndexError(fmt.Sprintf("Background indexing failed: %v", err))
 			return
 		}
 

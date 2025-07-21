@@ -117,7 +117,6 @@ func InteractiveSetup() (Config, error) {
 		// API key (masked)
 		keyPrompt := promptui.Prompt{
 			Label: "Enter API key",
-			Mask:  '*',
 		}
 		key, err := keyPrompt.Run()
 		if err != nil {
@@ -144,6 +143,11 @@ func InteractiveSetup() (Config, error) {
 				return cfg, err
 			}
 			cfg.BaseURL = strings.TrimSpace(bu)
+
+			// ensure default URL is set if user left the input blank
+			if cfg.BaseURL == "" {
+				cfg.BaseURL = defaultURL
+			}
 		}
 
 		// model selection
@@ -154,7 +158,7 @@ func InteractiveSetup() (Config, error) {
 		case "openrouter":
 			modelOptions = []string{"google/gemini-2.5-flash", "x-ai/grok-4", "moonshotai/kimi-k2"}
 		case "anthropic":
-			modelOptions = []string{"claude-4-opus", "claude-sonnet-4", "claude-3-7-sonnet"}
+			modelOptions = []string{"claude-4-opus", "claude-4-sonnet-20250514", "claude-3-7-sonnet"}
 		}
 
 		modelOptions = append(modelOptions, "<enter custom model>")
@@ -244,7 +248,8 @@ func (c *Config) IsLocalModel() bool {
 
 // Validate validates the configuration and applies necessary fixes
 func (c *Config) Validate() error {
-	if c.IsLocalModel() && c.APIKey == "" {
+	// auto-set a dummy API key only for truly local OpenAI-compatible setups
+	if c.Provider == "openai" && c.IsLocalModel() && c.APIKey == "" {
 		c.APIKey = "local-api-key"
 	}
 
