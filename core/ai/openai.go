@@ -12,6 +12,7 @@ import (
 
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
+	mcpClient "github.com/vadiminshakov/autonomy/core/mcp/client"
 	"github.com/vadiminshakov/autonomy/pkg/retry"
 )
 
@@ -69,23 +70,6 @@ func NewOpenai(cfg config.Config) (*OpenAIClient, error) {
 	}, nil
 }
 
-func convertTools(tools []entity.ToolDefinition) []openai.Tool {
-	defs := make([]openai.Tool, 0, len(tools))
-	for _, t := range tools {
-		params, _ := json.Marshal(t.InputSchema)
-
-		defs = append(defs, openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  json.RawMessage(params),
-			},
-		})
-	}
-	return defs
-}
-
 // GenerateCode generates AI response using OpenAI API
 func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
 	formatter := &OpenAIFormatter{}
@@ -119,10 +103,11 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 	}); err != nil {
 		// try JSON fallback for HTTP 400
 		if apiErr, ok := err.(*openai.APIError); ok && apiErr.HTTPStatusCode == http.StatusBadRequest {
-			messagesWithToolsInJSON := o.addToolsToSystemPrompt(messages, promptData.Tools)
+			// Use MCP format in fallback for models that understand it
+			messagesWithMCP := o.buildMCPPrompt(messages, promptData.Tools)
 			reqWithoutTools := openai.ChatCompletionRequest{
 				Model:     model,
-				Messages:  messagesWithToolsInJSON,
+				Messages:  messagesWithMCP,
 				MaxTokens: 8000,
 			}
 
@@ -175,61 +160,70 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 	}, nil
 }
 
-// addToolsToSystemPrompt adds tool descriptions to the system prompt for models that don't support tools
-func (o *OpenAIClient) addToolsToSystemPrompt(
+// buildMCPPrompt creates a system message with MCP tools information
+// that models can understand as available tools in Model Context Protocol format.
+// This provides a fallback mechanism for models that understand MCP but don't
+// support native OpenAI function calling.
+func (o *OpenAIClient) buildMCPPrompt(
 	messages []openai.ChatCompletionMessage,
 	tools []entity.ToolDefinition,
 ) []openai.ChatCompletionMessage {
-	// build strict JSON-only instructions
-	strictPromptHeader := `You are a tool-using AI assistant. Read carefully and STRICTLY follow every rule.
+	if len(tools) == 0 {
+		return messages
+	}
 
-WHEN A TOOL IS NEEDED
-• Output STRICT JSON ONLY (no markdown, no plaintext outside the JSON).
-• Required schema:
-  {
-    "content": "<short explanation>",
-    "tool_calls": [
-      { "name": "<toolName>", "args": { "param": "value" } }
-    ]
-  }
-• If a tool takes no arguments, pass an empty object: "args": {}.
-• Multiple tools → put several objects in the same "tool_calls" array.
-• "content" is mandatory (may be an empty string if nothing to add).
+	// convert tools to MCP format
+	mcpTools := mcpClient.ConvertToMCPTools(tools)
 
-WHEN NO TOOL IS REQUIRED
-• Reply with JSON:
-  { "content": "<answer>" }
+	// create simple JSON representation
+	toolsJSON, err := json.MarshalIndent(mcpTools, "", "  ")
+	if err != nil {
+		return messages
+	}
 
-ABSOLUTE PROHIBITIONS
-• Never output anything outside the JSON block (even greetings or explanations).
-• Never invent tool names – use only those from the provided list below.
-• Ensure the JSON is syntactically valid (matched braces, double quotes).
+	// create system message with MCP tools and response format instructions
+	fallbackSystemPrompt := fmt.Sprintf(`Available tools in Model Context Protocol format:
 
-Failure to comply will be treated as a fatal error.`
+%s
 
-	// include JSON description for each tool (name, description, schema)
-	var toolJSON []string
+When you need to use tools, respond with a JSON object in this exact format:
+{
+  "content": "your response text here",
+  "tool_calls": [
+    {
+      "name": "tool_name",
+      "args": {"param1": "value1", "param2": "value2"}
+    }
+  ]
+}
+
+If you don't need to use any tools, just respond normally with plain text.`, string(toolsJSON))
+
+	systemMsg := openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleSystem,
+		Content: fallbackSystemPrompt,
+	}
+
+	newMsgs := []openai.ChatCompletionMessage{systemMsg}
+	newMsgs = append(newMsgs, messages...)
+	return newMsgs
+}
+
+func convertTools(tools []entity.ToolDefinition) []openai.Tool {
+	defs := make([]openai.Tool, 0, len(tools))
 	for _, t := range tools {
-		b, err := json.Marshal(t)
-		if err != nil {
-			continue
-		}
+		params, _ := json.Marshal(t.InputSchema)
 
-		toolJSON = append(toolJSON, string(b))
+		defs = append(defs, openai.Tool{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  json.RawMessage(params),
+			},
+		})
 	}
-
-	toolsList := strings.Join(toolJSON, "\n")
-
-	strictPrompt := fmt.Sprintf("%s\n\nAvailable tools (JSON):\n%s", strictPromptHeader, toolsList)
-
-	newMessages := []openai.ChatCompletionMessage{
-		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: strictPrompt,
-		},
-	}
-	newMessages = append(newMessages, messages...)
-	return newMessages
+	return defs
 }
 
 // parseJSONResponse parses the model response for JSON with tool calls
