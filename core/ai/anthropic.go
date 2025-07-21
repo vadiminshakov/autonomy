@@ -9,6 +9,7 @@ import (
 
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/pkg/retry"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -97,7 +98,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 
 	toolChoice := determineToolChoice(lastUserMessage)
 
-	resp, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
+	params := anthropic.MessageNewParams{
 		Model:      model,
 		MaxTokens:  8000,
 		Messages:   msgs,
@@ -107,8 +108,18 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 			Text: pd.SystemPrompt,
 			Type: constant.Text("text"),
 		}},
-	})
-	if err != nil {
+	}
+
+	var resp *anthropic.Message
+	var err error
+	
+	if err = retry.Exponential(ctx, func() error {
+		resp, err = c.client.Messages.New(ctx, params)
+		return err
+	}, func(e error) bool {
+		errStr := strings.ToLower(e.Error())
+		return strings.Contains(errStr, "429") || strings.Contains(errStr, "rate limit")
+	}); err != nil {
 		return nil, err
 	}
 

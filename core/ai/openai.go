@@ -12,6 +12,7 @@ import (
 
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/pkg/retry"
 )
 
 type OpenAIClient struct {
@@ -106,8 +107,16 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		MaxTokens:  8000,
 	}
 
-	resp, err := o.client.CreateChatCompletion(ctx, req)
-	if err != nil {
+	var resp openai.ChatCompletionResponse
+	var err error
+
+	if err = retry.Exponential(ctx, func() error {
+		resp, err = o.client.CreateChatCompletion(ctx, req)
+		return err
+	}, func(e error) bool {
+		apiErr, ok := e.(*openai.APIError)
+		return ok && apiErr.HTTPStatusCode == http.StatusTooManyRequests
+	}); err != nil {
 		// try JSON fallback for HTTP 400
 		if apiErr, ok := err.(*openai.APIError); ok && apiErr.HTTPStatusCode == http.StatusBadRequest {
 			messagesWithToolsInJSON := o.addToolsToSystemPrompt(messages, promptData.Tools)
@@ -117,12 +126,19 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 				MaxTokens: 8000,
 			}
 
-			resp, err = o.client.CreateChatCompletion(ctx, reqWithoutTools)
-			if err != nil {
+			var fallbackResp openai.ChatCompletionResponse
+
+			if err = retry.Exponential(ctx, func() error {
+				fallbackResp, err = o.client.CreateChatCompletion(ctx, reqWithoutTools)
+				return err
+			}, func(e error) bool {
+				apiErr, ok := e.(*openai.APIError)
+				return ok && apiErr.HTTPStatusCode == http.StatusTooManyRequests
+			}); err != nil {
 				return nil, err
 			}
 
-			return o.parseJSONResponse(resp)
+			return o.parseJSONResponse(fallbackResp)
 		}
 
 		return nil, err
