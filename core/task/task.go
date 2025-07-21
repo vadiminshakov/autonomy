@@ -145,10 +145,6 @@ func (t *Task) ProcessTask() error {
 
 // callAi gets response from AI with rate limiting
 func (t *Task) callAi() (*entity.AIResponse, error) {
-	if err := t.enforceRateLimit(); err != nil {
-		return nil, fmt.Errorf("rate limit error: %v", err)
-	}
-
 	ctx, cancel := context.WithTimeout(t.ctx, t.config.AICallTimeout)
 	defer cancel()
 
@@ -524,32 +520,6 @@ func (t *Task) forceToolUsage() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.promptData.AddMessage("user", t.promptData.GetForceToolsMessage())
-}
-
-func (t *Task) enforceRateLimit() error {
-	t.mu.Lock()
-	elapsed := time.Since(t.lastAPICall)
-
-	if elapsed < t.config.MinAPIInterval {
-		waitTime := t.config.MinAPIInterval - elapsed
-		t.mu.Unlock()
-
-		fmt.Println(ui.Warning(fmt.Sprintf("rate limit - waiting %v before next API call", waitTime)))
-
-		select {
-		case <-time.After(waitTime):
-			t.mu.Lock()
-			t.lastAPICall = time.Now()
-			t.mu.Unlock()
-			return nil
-		case <-t.ctx.Done():
-			return t.ctx.Err()
-		}
-	}
-
-	t.lastAPICall = time.Now()
-	t.mu.Unlock()
-	return nil
 }
 
 func (t *Task) copyPromptData() entity.PromptData {
