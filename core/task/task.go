@@ -53,7 +53,6 @@ type Task struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	noToolCount int
-	lastAPICall time.Time
 
 	planner *Planner
 }
