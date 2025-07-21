@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/chzyer/readline"
+
+	"github.com/vadiminshakov/autonomy/core/config"
 )
 
 // REPLCommands stores command history and provides REPL functionality
@@ -41,6 +43,7 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("help"),
 	readline.PcItem("clear"),
 	readline.PcItem("history"),
+	readline.PcItem("reconfig"),
 	readline.PcItem("exit"),
 )
 
@@ -59,7 +62,7 @@ func (r *REPLCommands) ShowWelcome() {
 	fmt.Println(BrightCyan("🤖 AI programming assistant"))
 	fmt.Println()
 	fmt.Println(Info("Enter your programming tasks or commands"))
-	fmt.Println(Dim("Available commands: help, clear, history, exit"))
+	fmt.Println(Dim("Available commands: help, clear, history, reconfig, exit"))
 	fmt.Println()
 }
 
@@ -73,24 +76,24 @@ func (r *REPLCommands) GetPrompt() string {
 }
 
 // ReadInput reads user input and handles built-in commands
-func (r *REPLCommands) ReadInput() (string, bool) {
+func (r *REPLCommands) ReadInput() (string, bool, bool) {
 	r.readline.SetPrompt(r.GetPrompt())
 
 	line, err := r.readline.Readline()
 	if err != nil {
 		if err == readline.ErrInterrupt {
-			return "", false
+			return "", false, false
 		} else if err == io.EOF {
-			return "", true
+			return "", true, false
 		}
-		return "", true
+		return "", true, false
 	}
 
 	// trim whitespace
 	inputStr := strings.TrimSpace(line)
 
 	if inputStr == "" {
-		return "", false
+		return "", false, false
 	}
 
 	// add to history
@@ -99,22 +102,28 @@ func (r *REPLCommands) ReadInput() (string, bool) {
 	// handle built-in commands
 	switch inputStr {
 	case "exit":
-		return "", true
+		return "", true, false
 
 	case "help":
 		r.showHelp()
-		return "", false
+		return "", false, false
 
 	case "clear":
 		r.clear()
-		return "", false
+		return "", false, false
 
 	case "history":
 		r.showHistory()
-		return "", false
+		return "", false, false
+
+	case "reconfig":
+		if r.reconfig() {
+			return "", false, true
+		}
+		return "", false, false
 
 	default:
-		return inputStr, false
+		return inputStr, false, false
 	}
 }
 
@@ -126,6 +135,7 @@ General:
   help     – show this help
   clear    – clear the screen
   history  – show command history
+  reconfig – recreate configuration
   exit     – quit the program`
 
 	fmt.Println(helpText)
@@ -188,4 +198,17 @@ func ShowTaskComplete() {
 	fmt.Println(Dim(strings.Repeat("─", 50)))
 	fmt.Println(Success("Task completed!"))
 	fmt.Println()
+}
+
+func (r *REPLCommands) reconfig() bool {
+	fmt.Println()
+	_, err := config.InteractiveSetup()
+	if err != nil {
+		fmt.Println(Error("failed to reconfigure: " + err.Error()))
+		fmt.Println()
+		return false
+	}
+	fmt.Println(Success("configuration updated."))
+	fmt.Println()
+	return true
 }
