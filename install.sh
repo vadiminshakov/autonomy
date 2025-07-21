@@ -305,9 +305,6 @@ main() {
     install_binary
     verify_installation
     cleanup
-    
-    print_status "done! Don't forget to configure environment variables:"
-    print_status "  - OPENAI_API_KEY or ANTHROPIC_API_KEY"
 }
 
 trap cleanup EXIT
