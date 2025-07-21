@@ -22,13 +22,17 @@ go install github.com/vadiminshakov/autonomy@latest
 
 ## Usage
 
-```bash
-# Set API key
-export OPENAI_API_KEY="your_key"  # or ANTHROPIC_API_KEY
+Just run:
 
-# Run
+```bash
 autonomy
 ```
+
+On first launch the interactive wizard will guide you to:
+
+1. Choose provider
+2. Enter API key or use local mode
+3. Choose model
 
 ## Contributing
 
