@@ -1,12 +1,11 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/vadiminshakov/autonomy/core/ai"
+	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/index"
 	"github.com/vadiminshakov/autonomy/core/task"
 	"github.com/vadiminshakov/autonomy/terminal"
@@ -14,40 +13,29 @@ import (
 )
 
 func main() {
-	provider := flag.String("provider", "auto", "AI provider: openai|anthropic|auto (default auto)")
-	flag.Parse()
-
 	var client task.AIClient
-	var err error
 
-	switch *provider {
-	case "auto":
-		if os.Getenv("ANTHROPIC_API_KEY") != "" {
-			*provider = "anthropic"
-		} else if os.Getenv("OPENAI_API_KEY") != "" {
-			*provider = "openai"
-		} else {
-			log.Fatal("environment variable OPENAI_API_KEY or ANTHROPIC_API_KEY is not set")
+	// try to load configuration from file, otherwise start interactive setup
+	cfg, err := config.LoadConfigFile()
+	if err != nil {
+		cfg, err = config.InteractiveSetup()
+		if err != nil {
+			log.Fatal(ui.Error("failed to set up configuration: " + err.Error()))
 		}
 	}
 
-	fmt.Printf("Using provider: %s\n", *provider)
+	fmt.Printf("Using provider: %s\n", cfg.Provider)
 
-	switch *provider {
+	switch cfg.Provider {
 	case "openai":
-		if os.Getenv("OPENAI_API_KEY") == "" {
-			log.Fatal(ui.Error("OPENAI_API_KEY is not set"))
-		}
-		client, err = ai.NewOpenai()
-
+		client, err = ai.NewOpenai(cfg)
 	case "anthropic":
-		if os.Getenv("ANTHROPIC_API_KEY") == "" {
-			log.Fatal(ui.Error("ANTHROPIC_API_KEY is not set"))
-		}
-		client, err = ai.NewAnthropic()
+		client, err = ai.NewAnthropic(cfg)
 
+	case "openrouter":
+		client, err = ai.NewOpenai(cfg)
 	default:
-		log.Fatalf("you need to specify provider with -provider anthropic|openai flag, got %s", *provider)
+		log.Fatalf("unknown provider %s in config", cfg.Provider)
 	}
 
 	if err != nil {
