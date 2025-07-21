@@ -3,12 +3,11 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -18,20 +17,27 @@ import (
 
 type AnthropicClient struct {
 	client *anthropic.Client
+	model  anthropic.Model
 }
 
-// NewAnthropic constructs a client authorized with ANTHROPIC_API_KEY.
-func NewAnthropic() (*AnthropicClient, error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("environment variable ANTHROPIC_API_KEY is not set")
+// NewAnthropic constructs a client with provided configuration
+func NewAnthropic(cfg config.Config) (*AnthropicClient, error) {
+	options := []option.RequestOption{
+		option.WithAPIKey(cfg.APIKey),
 	}
 
-	cli := anthropic.NewClient(
-		option.WithAPIKey(apiKey),
-	)
+	if cfg.BaseURL != "" {
+		options = append(options, option.WithBaseURL(cfg.BaseURL))
+	}
 
-	return &AnthropicClient{client: &cli}, nil
+	cli := anthropic.NewClient(options...)
+
+	var model anthropic.Model
+	if cfg.Model != "" {
+		model = anthropic.Model(cfg.Model)
+	}
+
+	return &AnthropicClient{client: &cli, model: model}, nil
 }
 
 // GenerateCode generates AI response using Anthropic API
@@ -84,65 +90,55 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 		})
 	}
 
-	// default model list (try the newest first, fall back if unavailable)
-	models := []anthropic.Model{
-		anthropic.ModelClaude4Sonnet20250514,
-		anthropic.ModelClaude3_7SonnetLatest,
-		anthropic.ModelClaude3_5SonnetLatest,
+	model := c.model
+	if model == "" {
+		model = anthropic.ModelClaude4Sonnet20250514
 	}
 
-	var callErrs []error
+	toolChoice := determineToolChoice(lastUserMessage)
 
-	for _, model := range models {
-		toolChoice := determineToolChoice(lastUserMessage)
+	resp, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:      model,
+		MaxTokens:  8000,
+		Messages:   msgs,
+		Tools:      anthropicTools,
+		ToolChoice: toolChoice,
+		System: []anthropic.TextBlockParam{{
+			Text: pd.SystemPrompt,
+			Type: constant.Text("text"),
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
 
-		resp, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
-			Model:      model,
-			MaxTokens:  8000,
-			Messages:   msgs,
-			Tools:      anthropicTools,
-			ToolChoice: toolChoice,
-			System: []anthropic.TextBlockParam{{
-				Text: pd.SystemPrompt,
-				Type: constant.Text("text"),
-			}},
-		})
-		if err != nil {
-			callErrs = append(callErrs, errors.Wrapf(err, "model %s", model))
-			continue
-		}
+	if len(resp.Content) == 0 {
+		return nil, errors.New("anthropic response contained no content")
+	}
 
-		if len(resp.Content) == 0 {
-			callErrs = append(callErrs, errors.New("anthropic response contained no content"))
-			continue
-		}
+	var toolCalls []entity.ToolCall
+	var textContent string
 
-		var toolCalls []entity.ToolCall
-		var textContent string
-
-		for _, blk := range resp.Content {
-			switch blk.Type {
-			case "text":
-				textContent = blk.Text
-			case "tool_use":
-				var obj map[string]any
-				if len(blk.Input) > 0 {
-					_ = json.Unmarshal(blk.Input, &obj)
-				}
-				toolCalls = append(toolCalls, entity.ToolCall{
-					Name: blk.Name,
-					Args: obj,
-				})
+	for _, blk := range resp.Content {
+		switch blk.Type {
+		case "text":
+			textContent = blk.Text
+		case "tool_use":
+			var obj map[string]any
+			if len(blk.Input) > 0 {
+				_ = json.Unmarshal(blk.Input, &obj)
 			}
+			toolCalls = append(toolCalls, entity.ToolCall{
+				Name: blk.Name,
+				Args: obj,
+			})
 		}
-
-		return &entity.AIResponse{
-			Content:   textContent,
-			ToolCalls: toolCalls,
-		}, nil
 	}
 
-	return nil, fmt.Errorf("all anthropic models failed. Errors: %s", callErrs)
+	return &entity.AIResponse{
+		Content:   textContent,
+		ToolCalls: toolCalls,
+	}, nil
 }
 
 // determineToolChoice analyzes the user message to decide whether to force tool usage
