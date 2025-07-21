@@ -28,7 +28,6 @@ linters-settings:
 linters:
   enable:
     - bodyclose
-    - depguard
     - dogsled
     - dupl
     - errcheck

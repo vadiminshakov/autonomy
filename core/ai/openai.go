@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	openai "github.com/sashabaranov/go-openai"
+
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
 )
@@ -159,7 +160,10 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 }
 
 // addToolsToSystemPrompt adds tool descriptions to the system prompt for models that don't support tools
-func (o *OpenAIClient) addToolsToSystemPrompt(messages []openai.ChatCompletionMessage, tools []entity.ToolDefinition) []openai.ChatCompletionMessage {
+func (o *OpenAIClient) addToolsToSystemPrompt(
+	messages []openai.ChatCompletionMessage,
+	tools []entity.ToolDefinition,
+) []openai.ChatCompletionMessage {
 	// build strict JSON-only instructions
 	strictPromptHeader := `You are a tool-using AI assistant. Read carefully and STRICTLY follow every rule.
 

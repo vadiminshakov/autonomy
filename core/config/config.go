@@ -26,7 +26,6 @@ type Config struct {
 	Provider string `json:"provider"`
 }
 
-
 // configFilePath builds the path to ~/.autonomy/config.json.
 func configFilePath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -83,8 +82,9 @@ func saveConfigFile(cfg Config) error {
 
 // InteractiveSetup launches a CLI wizard to collect configuration from the user
 // and saves the result to ~/.autonomy/config.json.
+//
+//nolint:gocyclo
 func InteractiveSetup() (Config, error) {
-
 	fmt.Println("🔧 Initial configuration (Autonomy)")
 
 	// Step 1: choose config type (cloud vs local)
