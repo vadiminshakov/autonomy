@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/reflection"
 	"github.com/vadiminshakov/autonomy/core/tools"
+	"github.com/vadiminshakov/autonomy/core/types"
 	"github.com/vadiminshakov/autonomy/ui"
 )
 
@@ -22,6 +24,7 @@ type Config struct {
 	ToolTimeout       time.Duration
 	MinAPIInterval    time.Duration
 	MaxNoToolAttempts int
+	EnableReflection  bool
 }
 
 // DefaultConfig returns default task configuration
@@ -33,6 +36,7 @@ func defaultConfig() Config {
 		ToolTimeout:       30 * time.Second,
 		MinAPIInterval:    1 * time.Second,
 		MaxNoToolAttempts: 5,
+		EnableReflection:  true,
 	}
 }
 
@@ -54,7 +58,9 @@ type Task struct {
 	cancel      context.CancelFunc
 	noToolCount int
 
-	planner *Planner
+	planner          *Planner
+	reflectionEngine *reflection.ReflectionEngine
+	originalTask     string
 }
 
 // NewTask creates a new task with default configuration
@@ -65,14 +71,27 @@ func NewTask(client AIClient) *Task {
 // NewTaskWithConfig creates a new task with custom configuration
 func NewTaskWithConfig(client AIClient, config Config) *Task {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Task{
-		client:     client,
-		promptData: NewPromptData(),
-		config:     config,
-		ctx:        ctx,
-		cancel:     cancel,
-		planner:    NewPlanner(),
+	var reflectionEngine *reflection.ReflectionEngine
+	if config.EnableReflection {
+		reflectionEngine = reflection.NewReflectionEngine(client)
 	}
+
+	return &Task{
+		client:           client,
+		promptData:       NewPromptData(),
+		config:           config,
+		ctx:              ctx,
+		cancel:           cancel,
+		planner:          NewPlanner(),
+		reflectionEngine: reflectionEngine,
+	}
+}
+
+// SetOriginalTask sets the original task description for reflection
+func (t *Task) SetOriginalTask(task string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.originalTask = task
 }
 
 // Close releases task resources
@@ -178,7 +197,7 @@ func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
 }
 
 // getStoredPlan retrieves a stored execution plan if available
-func (t *Task) getStoredPlan() *ExecutionPlan {
+func (t *Task) getStoredPlan() *types.ExecutionPlan {
 	if tools.HasStoredToolCalls() {
 		taskDesc, toolCalls, err := tools.GetStoredToolCalls()
 		if err != nil {
@@ -220,8 +239,10 @@ func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
 }
 
 // executePlan executes an execution plan using parallel execution
-func (t *Task) executePlan(plan *ExecutionPlan) (bool, error) {
+func (t *Task) executePlan(plan *types.ExecutionPlan) (bool, error) {
 	fmt.Println(ui.Tool(fmt.Sprintf("Executing plan with %d steps...", len(plan.Steps))))
+	startTime := time.Now()
+
 	executor := NewParallelExecutor(4, 5*time.Minute)
 	err := executor.ExecutePlan(t.ctx, plan)
 	if err != nil {
@@ -229,6 +250,18 @@ func (t *Task) executePlan(plan *ExecutionPlan) (bool, error) {
 	}
 
 	t.addPlanResultsToHistory(plan)
+
+	// Perform reflection if enabled
+	if t.config.EnableReflection && t.reflectionEngine != nil && t.originalTask != "" {
+		executionTime := time.Since(startTime)
+		reflection, err := t.reflectionEngine.EvaluateCompletion(t.ctx, plan, t.originalTask)
+		if err != nil {
+			log.Printf("Reflection error: %v", err)
+		} else {
+			log.Printf("Reflection completed in %v", executionTime)
+			t.handleReflectionResult(reflection)
+		}
+	}
 
 	return t.checkCompletion(plan), nil
 }
@@ -261,9 +294,9 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 }
 
 // checkCompletion checks if the execution plan indicates task completion
-func (t *Task) checkCompletion(plan *ExecutionPlan) bool {
+func (t *Task) checkCompletion(plan *types.ExecutionPlan) bool {
 	for _, step := range plan.Steps {
-		if step.ToolName == "attempt_completion" && step.Status == StepStatusCompleted {
+		if step.ToolName == "attempt_completion" && step.Status == types.StepStatusCompleted {
 			return true
 		}
 	}
@@ -571,17 +604,33 @@ func formatFindFilesArgs(args map[string]any) string {
 }
 
 // addPlanResultsToHistory adds execution results from completed plan steps to AI conversation
-func (t *Task) addPlanResultsToHistory(plan *ExecutionPlan) {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (t *Task) addPlanResultsToHistory(plan *types.ExecutionPlan) {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 
 	for _, step := range plan.Steps {
-		if step.Status == StepStatusCompleted || step.Status == StepStatusFailed {
+		if step.Status == types.StepStatusCompleted || step.Status == types.StepStatusFailed {
 			call := entity.ToolCall{
 				Name: step.ToolName,
 				Args: step.Args,
 			}
 			t.handleToolResult(call, step.Result, step.Error)
+		}
+	}
+}
+
+// handleReflectionResult processes reflection evaluation and provides feedback
+func (t *Task) handleReflectionResult(reflection *reflection.ReflectionResult) {
+	if reflection.TaskCompleted {
+		fmt.Println(ui.Success("✅ Reflection: Task completed successfully"))
+		fmt.Printf("%s\n", ui.Info("Reason: "+reflection.Reason))
+	} else {
+		fmt.Println(ui.Warning("🤔 Reflection: Task may not be fully completed"))
+		fmt.Printf("%s\n", ui.Info("Reason: "+reflection.Reason))
+
+		if reflection.ShouldRetry {
+			fmt.Println(ui.Info("💡 Suggestion: Consider continuing or retrying the task"))
+			t.addUserMessage("The reflection system suggests the task is not fully complete. Reason: " + reflection.Reason + ". Please review and continue if needed.")
 		}
 	}
 }
