@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vadiminshakov/autonomy/core/tools"
+	"github.com/vadiminshakov/autonomy/core/types"
 	"github.com/vadiminshakov/autonomy/ui"
 )
 
@@ -37,7 +38,7 @@ func NewParallelExecutor(maxWorkers int, timeout time.Duration) *ParallelExecuto
 }
 
 // ExecutePlan executes an execution plan with parallel processing
-func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *ExecutionPlan) error {
+func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *types.ExecutionPlan) error {
 	fmt.Println(ui.Tool(fmt.Sprintf("Executing plan with %d steps...", len(plan.Steps))))
 
 	for !pe.planner.IsCompleted(plan) {
@@ -74,7 +75,7 @@ func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *ExecutionPlan
 }
 
 // executeStepsParallel executes multiple steps in parallel
-func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *ExecutionPlan, steps []*ExecutionStep) error {
+func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *types.ExecutionPlan, steps []*types.ExecutionStep) error {
 	if len(steps) == 0 {
 		return nil
 	}
@@ -84,7 +85,7 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *Exec
 		workerCount = len(steps)
 	}
 
-	stepChan := make(chan *ExecutionStep, len(steps))
+	stepChan := make(chan *types.ExecutionStep, len(steps))
 	resultChan := make(chan ExecutionResult, len(steps))
 
 	execCtx, cancel := context.WithTimeout(ctx, pe.timeout)
@@ -97,7 +98,7 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *Exec
 	}
 
 	for _, step := range steps {
-		pe.planner.UpdateStepStatus(plan, step.ID, StepStatusRunning)
+		pe.planner.UpdateStepStatus(plan, step.ID, types.StepStatusRunning)
 		stepChan <- step
 	}
 	close(stepChan)
@@ -151,7 +152,7 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *Exec
 func (pe *ParallelExecutor) worker(
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	stepChan <-chan *ExecutionStep,
+	stepChan <-chan *types.ExecutionStep,
 	resultChan chan<- ExecutionResult,
 ) {
 	defer wg.Done()
@@ -173,7 +174,7 @@ func (pe *ParallelExecutor) worker(
 }
 
 // executeStep executes a single step
-func (pe *ParallelExecutor) executeStep(ctx context.Context, step *ExecutionStep) ExecutionResult {
+func (pe *ParallelExecutor) executeStep(ctx context.Context, step *types.ExecutionStep) ExecutionResult {
 	startTime := time.Now()
 
 	// get appropriate timeout for this tool
@@ -236,9 +237,9 @@ func (pe *ParallelExecutor) getToolTimeout(toolName string) time.Duration {
 }
 
 // findStepInPlan finds a step by id in the execution plan
-func (pe *ParallelExecutor) findStepInPlan(plan *ExecutionPlan, stepID string) *ExecutionStep {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (pe *ParallelExecutor) findStepInPlan(plan *types.ExecutionPlan, stepID string) *types.ExecutionStep {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 
 	for _, step := range plan.Steps {
 		if step.ID == stepID {
