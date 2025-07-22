@@ -7,43 +7,9 @@ import (
 	"time"
 
 	"github.com/vadiminshakov/autonomy/core/entity"
+	"github.com/vadiminshakov/autonomy/core/types"
 )
 
-// ExecutionStep represents a single step in the execution plan
-type ExecutionStep struct {
-	ID           string         `json:"id"`
-	ToolName     string         `json:"tool_name"`
-	Args         map[string]any `json:"args"`
-	Dependencies []string       `json:"dependencies"`
-	Status       StepStatus     `json:"status"`
-	Result       string         `json:"result,omitempty"`
-	Error        error          `json:"error,omitempty"`
-	StartTime    *time.Time     `json:"start_time,omitempty"`
-	EndTime      *time.Time     `json:"end_time,omitempty"`
-
-	// New fields for summarization
-	FilesAffected []string `json:"files_affected,omitempty"`
-	KeyFindings   []string `json:"key_findings,omitempty"`
-	Category      string   `json:"category,omitempty"` // "analysis", "modification", "test"
-}
-
-// StepStatus represents the status of an execution step
-type StepStatus string
-
-const (
-	StepStatusPending   StepStatus = "pending"
-	StepStatusReady     StepStatus = "ready"
-	StepStatusRunning   StepStatus = "running"
-	StepStatusCompleted StepStatus = "completed"
-	StepStatusFailed    StepStatus = "failed"
-)
-
-// ExecutionPlan represents a complete execution plan with dependencies
-type ExecutionPlan struct {
-	Steps          []*ExecutionStep `json:"steps"`
-	ParallelGroups [][]string       `json:"parallel_groups"`
-	mu             sync.RWMutex
-}
 
 // Planner creates and manages execution plans
 type Planner struct {
@@ -56,22 +22,22 @@ func NewPlanner() *Planner {
 }
 
 // CreatePlan creates an execution plan from tool calls
-func (p *Planner) CreatePlan(toolCalls []entity.ToolCall) *ExecutionPlan {
+func (p *Planner) CreatePlan(toolCalls []entity.ToolCall) *types.ExecutionPlan {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	plan := &ExecutionPlan{
-		Steps: make([]*ExecutionStep, 0, len(toolCalls)),
+	plan := &types.ExecutionPlan{
+		Steps: make([]*types.ExecutionStep, 0, len(toolCalls)),
 	}
 
 	// convert tool calls to execution steps
 	for i, call := range toolCalls {
-		step := &ExecutionStep{
+		step := &types.ExecutionStep{
 			ID:           fmt.Sprintf("step_%d", i+1),
 			ToolName:     call.Name,
 			Args:         call.Args,
 			Dependencies: p.inferDependencies(call, toolCalls[:i]),
-			Status:       StepStatusPending,
+			Status:       types.StepStatusPending,
 			Category:     p.categorizeStep(call.Name),
 		}
 
@@ -158,7 +124,7 @@ func isAnalysisOrModificationTool(toolName string) bool {
 }
 
 // AnalyzeDependencies analyzes the execution plan and identifies parallel execution groups
-func (p *Planner) AnalyzeDependencies(plan *ExecutionPlan) [][]string {
+func (p *Planner) AnalyzeDependencies(plan *types.ExecutionPlan) [][]string {
 	var parallelGroups [][]string
 	processed := make(map[string]bool)
 
@@ -190,7 +156,7 @@ func (p *Planner) AnalyzeDependencies(plan *ExecutionPlan) [][]string {
 }
 
 // canRunInParallel checks if two steps can be executed in parallel
-func (p *Planner) canRunInParallel(step1, step2 *ExecutionStep, allSteps []*ExecutionStep) bool {
+func (p *Planner) canRunInParallel(step1, step2 *types.ExecutionStep, allSteps []*types.ExecutionStep) bool {
 	// steps cannot run in parallel if one depends on the other
 	if p.hasDependency(step1, step2, allSteps) || p.hasDependency(step2, step1, allSteps) {
 		return false
@@ -210,7 +176,7 @@ func (p *Planner) canRunInParallel(step1, step2 *ExecutionStep, allSteps []*Exec
 }
 
 // hasDependency checks if step1 depends on step2 (directly or indirectly)
-func (p *Planner) hasDependency(step1, step2 *ExecutionStep, allSteps []*ExecutionStep) bool {
+func (p *Planner) hasDependency(step1, step2 *types.ExecutionStep, allSteps []*types.ExecutionStep) bool {
 	// direct dependency
 	for _, dep := range step1.Dependencies {
 		if dep == step2.ID {
@@ -233,7 +199,7 @@ func (p *Planner) hasDependency(step1, step2 *ExecutionStep, allSteps []*Executi
 }
 
 // conflictingResources checks if two steps access conflicting resources
-func (p *Planner) conflictingResources(step1, step2 *ExecutionStep) bool {
+func (p *Planner) conflictingResources(step1, step2 *types.ExecutionStep) bool {
 	// check for file path conflicts
 	path1 := p.getFilePath(step1)
 	path2 := p.getFilePath(step2)
@@ -249,7 +215,7 @@ func (p *Planner) conflictingResources(step1, step2 *ExecutionStep) bool {
 }
 
 // getFilePath extracts file path from step arguments
-func (p *Planner) getFilePath(step *ExecutionStep) string {
+func (p *Planner) getFilePath(step *types.ExecutionStep) string {
 	if path, ok := step.Args["path"].(string); ok {
 		return path
 	}
@@ -278,21 +244,21 @@ func (p *Planner) isSequentialTool(toolName string) bool {
 }
 
 // GetParallelGroups returns the parallel execution groups
-func (p *Planner) GetParallelGroups(plan *ExecutionPlan) [][]string {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (p *Planner) GetParallelGroups(plan *types.ExecutionPlan) [][]string {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 	return plan.ParallelGroups
 }
 
 // GetReadySteps returns steps that are ready to execute (all dependencies completed)
-func (p *Planner) GetReadySteps(plan *ExecutionPlan) []*ExecutionStep {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (p *Planner) GetReadySteps(plan *types.ExecutionPlan) []*types.ExecutionStep {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 
-	var readySteps []*ExecutionStep
+	var readySteps []*types.ExecutionStep
 
 	for _, step := range plan.Steps {
-		if step.Status != StepStatusPending {
+		if step.Status != types.StepStatusPending {
 			continue
 		}
 
@@ -300,7 +266,7 @@ func (p *Planner) GetReadySteps(plan *ExecutionPlan) []*ExecutionStep {
 		allDepsCompleted := true
 		for _, depID := range step.Dependencies {
 			depStep := p.findStepByID(plan, depID)
-			if depStep == nil || depStep.Status != StepStatusCompleted {
+			if depStep == nil || depStep.Status != types.StepStatusCompleted {
 				allDepsCompleted = false
 				break
 			}
@@ -315,7 +281,7 @@ func (p *Planner) GetReadySteps(plan *ExecutionPlan) []*ExecutionStep {
 }
 
 // findStepByID finds a step by its ID
-func (p *Planner) findStepByID(plan *ExecutionPlan, id string) *ExecutionStep {
+func (p *Planner) findStepByID(plan *types.ExecutionPlan, id string) *types.ExecutionStep {
 	for _, step := range plan.Steps {
 		if step.ID == id {
 			return step
@@ -325,18 +291,18 @@ func (p *Planner) findStepByID(plan *ExecutionPlan, id string) *ExecutionStep {
 }
 
 // UpdateStepStatus updates the status of a step
-func (p *Planner) UpdateStepStatus(plan *ExecutionPlan, stepID string, status StepStatus) {
-	plan.mu.Lock()
-	defer plan.mu.Unlock()
+func (p *Planner) UpdateStepStatus(plan *types.ExecutionPlan, stepID string, status types.StepStatus) {
+	plan.Mu.Lock()
+	defer plan.Mu.Unlock()
 
 	for _, step := range plan.Steps {
 		if step.ID == stepID {
 			step.Status = status
 			switch status {
-			case StepStatusRunning:
+			case types.StepStatusRunning:
 				now := time.Now()
 				step.StartTime = &now
-			case StepStatusCompleted, StepStatusFailed:
+			case types.StepStatusCompleted, types.StepStatusFailed:
 				now := time.Now()
 				step.EndTime = &now
 			}
@@ -347,18 +313,18 @@ func (p *Planner) UpdateStepStatus(plan *ExecutionPlan, stepID string, status St
 }
 
 // SetStepResult sets the result and error for a step
-func (p *Planner) SetStepResult(plan *ExecutionPlan, stepID string, result string, err error) {
-	plan.mu.Lock()
-	defer plan.mu.Unlock()
+func (p *Planner) SetStepResult(plan *types.ExecutionPlan, stepID string, result string, err error) {
+	plan.Mu.Lock()
+	defer plan.Mu.Unlock()
 
 	for _, step := range plan.Steps {
 		if step.ID == stepID {
 			step.Result = result
 			step.Error = err
 			if err != nil {
-				step.Status = StepStatusFailed
+				step.Status = types.StepStatusFailed
 			} else {
-				step.Status = StepStatusCompleted
+				step.Status = types.StepStatusCompleted
 			}
 			now := time.Now()
 			step.EndTime = &now
@@ -368,9 +334,9 @@ func (p *Planner) SetStepResult(plan *ExecutionPlan, stepID string, result strin
 }
 
 // GetPlanSummary returns a human-readable summary of the execution plan
-func (p *Planner) GetPlanSummary(plan *ExecutionPlan) string {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (p *Planner) GetPlanSummary(plan *types.ExecutionPlan) string {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 
 	var summary strings.Builder
 	summary.WriteString("Execution Plan:\n")
@@ -396,12 +362,12 @@ func (p *Planner) GetPlanSummary(plan *ExecutionPlan) string {
 }
 
 // IsCompleted checks if the entire plan is completed
-func (p *Planner) IsCompleted(plan *ExecutionPlan) bool {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (p *Planner) IsCompleted(plan *types.ExecutionPlan) bool {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 
 	for _, step := range plan.Steps {
-		if step.Status != StepStatusCompleted && step.Status != StepStatusFailed {
+		if step.Status != types.StepStatusCompleted && step.Status != types.StepStatusFailed {
 			return false
 		}
 	}
@@ -409,12 +375,12 @@ func (p *Planner) IsCompleted(plan *ExecutionPlan) bool {
 }
 
 // HasFailures checks if any step in the plan has failed
-func (p *Planner) HasFailures(plan *ExecutionPlan) bool {
-	plan.mu.RLock()
-	defer plan.mu.RUnlock()
+func (p *Planner) HasFailures(plan *types.ExecutionPlan) bool {
+	plan.Mu.RLock()
+	defer plan.Mu.RUnlock()
 
 	for _, step := range plan.Steps {
-		if step.Status == StepStatusFailed {
+		if step.Status == types.StepStatusFailed {
 			return true
 		}
 	}

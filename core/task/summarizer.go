@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vadiminshakov/autonomy/core/types"
 )
 
 // TaskSummary contains execution results summary
@@ -33,7 +35,7 @@ func NewTaskSummarizer() *TaskSummarizer {
 // GenerateSummary creates a summary from execution plan
 //
 //nolint:gocyclo
-func (ts *TaskSummarizer) GenerateSummary(plan *ExecutionPlan) *TaskSummary {
+func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummary {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -54,9 +56,9 @@ func (ts *TaskSummarizer) GenerateSummary(plan *ExecutionPlan) *TaskSummary {
 	for _, step := range plan.Steps {
 		// track step status
 		switch step.Status {
-		case StepStatusCompleted:
+		case types.StepStatusCompleted:
 			summary.CompletedSteps++
-		case StepStatusFailed:
+		case types.StepStatusFailed:
 			summary.FailedSteps++
 			if step.Error != nil {
 				summary.Errors = append(summary.Errors, fmt.Sprintf("%s: %v", step.ToolName, step.Error))
@@ -86,7 +88,7 @@ func (ts *TaskSummarizer) GenerateSummary(plan *ExecutionPlan) *TaskSummary {
 		}
 
 		// extract key findings
-		if step.Status == StepStatusCompleted && step.Result != "" {
+		if step.Status == types.StepStatusCompleted && step.Result != "" {
 			findings := ts.extractKeyFindings(step)
 			if len(findings) > 0 {
 				summary.KeyFindings = append(summary.KeyFindings, findings...)
@@ -155,7 +157,7 @@ func (ts *TaskSummarizer) FormatSummary(summary *TaskSummary) string {
 }
 
 // getFilePath extracts file path from step arguments
-func (ts *TaskSummarizer) getFilePath(step *ExecutionStep) string {
+func (ts *TaskSummarizer) getFilePath(step *types.ExecutionStep) string {
 	if path, ok := step.Args["path"].(string); ok {
 		return path
 	}
@@ -166,7 +168,7 @@ func (ts *TaskSummarizer) getFilePath(step *ExecutionStep) string {
 }
 
 // extractKeyFindings extracts key findings from step results
-func (ts *TaskSummarizer) extractKeyFindings(step *ExecutionStep) []string {
+func (ts *TaskSummarizer) extractKeyFindings(step *types.ExecutionStep) []string {
 	var findings []string
 
 	switch step.ToolName {
