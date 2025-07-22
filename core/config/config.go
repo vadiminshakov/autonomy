@@ -156,7 +156,7 @@ func InteractiveSetup() (Config, error) {
 		case "openai":
 			modelOptions = []string{"o4", "o3", "gpt-4.1", "gpt-4o"}
 		case "openrouter":
-			modelOptions = []string{"google/gemini-2.5-flash", "x-ai/grok-4", "moonshotai/kimi-k2"}
+			modelOptions = []string{"google/gemini-2.5-pro", "x-ai/grok-4", "moonshotai/kimi-k2", "deepseek/deepseek-r1-0528"}
 		case "anthropic":
 			modelOptions = []string{"claude-4-opus", "claude-4-sonnet-20250514", "claude-3-7-sonnet"}
 		}
