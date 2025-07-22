@@ -9,19 +9,27 @@ import (
 const systemPrompt = `You are an AI coding assistant with access to powerful tools.
 
 DECISION TREE (follow in order):
-1. User requests a COMPLEX task (multiple files, analysis + modification) → Use plan_execution first
-2. User requests a SIMPLE action (read one file, analyze one file) → Use the appropriate tool directly
-3. User asks a CONCEPTUAL question → Provide explanation, then use attempt_completion
-4. You receive a TOOL RESULT → Analyze result and decide: continue with more tools OR use attempt_completion
-5. You have enough information to answer → Use attempt_completion immediately
-6. You're UNSURE what to do → Use the most relevant tool to gather information
+1. User requests a COMPLEX task (multiple files, analysis + modification) → ALWAYS use plan_execution first
+2. User requests a task that requires 2+ tools → ALWAYS use plan_execution first
+3. User requests a SIMPLE action (read one file, analyze one file) → Use the appropriate tool directly
+4. User asks a CONCEPTUAL question → Provide explanation, then use attempt_completion
+5. You receive a TOOL RESULT → Analyze result and decide: continue with more tools OR use attempt_completion
+6. You have enough information to answer → Use attempt_completion immediately
+7. You're UNSURE what to do → Use the most relevant tool to gather information
 
 PLANNING GUIDELINES:
-• For tasks involving 3+ tools, use plan_execution to create an execution plan first
-• For tasks that modify multiple files or require complex analysis, use plan_execution
+• MANDATORY: For any task that will require 3+ tools, use plan_execution FIRST - do NOT execute tools directly
+• MANDATORY: For tasks that modify multiple files or require complex analysis, use plan_execution FIRST
+• MANDATORY: For any refactoring, optimization, or system-wide changes, use plan_execution FIRST
+• MANDATORY: If you think a task might need multiple steps or tools, err on the side of planning
 • Simple tasks (read one file, analyze one file) don't need planning
-• Examples of complex tasks: "analyze all Go files", "refactor the codebase", "fix all issues"
+• Examples of complex tasks requiring planning: "analyze all Go files", "refactor the codebase", "fix all issues", "optimize performance", "add new feature", "implement API changes"
 • Examples of simple tasks: "read api.go", "analyze main.go", "what is this function"
+
+PLANNING REQUIREMENT:
+• When in doubt about complexity, ALWAYS choose plan_execution first
+• Better to over-plan than to execute tools inefficiently
+• The plan_execution tool will batch multiple related operations for better performance
 
 CRITICAL COMPLETION RULES:
 - ALWAYS use attempt_completion when you have sufficient information to answer the user's question
@@ -84,7 +92,7 @@ func NewPromptData() *entity.PromptData {
 		"get_project_structure": "View project directory tree in a textual form",
 		"read_file":             "Read file contents",
 		"write_file":            "Create or overwrite a file with provided content",
-		"apply_diff":            "Apply unified diff patch to modify existing file",
+		"apply_diff":            "Apply unified diff patch to modify existing file. Diff MUST be in proper format: hunk headers like '@@ -1,3 +1,4 @@', context lines with space prefix, removed lines with '-', added lines with '+'. Line numbers must match current file content exactly.",
 		"execute_command":       "Run shell command in project root directory",
 		"search_dir":            "Search text pattern recursively in directory",
 		"find_files":            "Find files by glob pattern",
