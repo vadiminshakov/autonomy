@@ -84,7 +84,7 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 	if !hasHeaders {
 		// add unified diff headers if missing
 		if !strings.Contains(diff, "@@") {
-			return "", fmt.Errorf("diff must contain hunk headers (@@)")
+			return "", fmt.Errorf("diff must contain hunk headers. Example: '@@ -1,3 +1,4 @@' to show changes starting at line 1")
 		}
 
 		header := fmt.Sprintf("--- %s\n+++ %s\n", filePath, filePath)
@@ -94,7 +94,7 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 	// validate hunk headers format
 	hunkRegex := regexp.MustCompile(`@@\s*-(\d+)(?:,(\d+))?\s*\+(\d+)(?:,(\d+))?\s*@@`)
 	if !hunkRegex.MatchString(diff) {
-		return "", fmt.Errorf("invalid hunk header format")
+		return "", fmt.Errorf("invalid hunk header format. Required format: '@@ -startLine,count +startLine,count @@' (example: '@@ -1,3 +1,4 @@')")
 	}
 
 	// validate diff lines format
@@ -110,7 +110,7 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 		}
 		if inHunk && line != "" {
 			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-") {
-				return "", fmt.Errorf("invalid diff line format at line %d: %s", i+1, line)
+				return "", fmt.Errorf("invalid diff line format at line %d: '%s'. Each line must start with space ' ' (context), '+' (added), or '-' (removed)", i+1, line)
 			}
 		}
 	}
