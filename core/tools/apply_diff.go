@@ -78,6 +78,10 @@ func applyDiff(args map[string]interface{}) (string, error) {
 func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 	diff = strings.TrimSpace(diff)
 
+	// normalize line endings to Unix style
+	diff = strings.ReplaceAll(diff, "\r\n", "\n")
+	diff = strings.ReplaceAll(diff, "\r", "\n")
+
 	// check if diff already has proper headers
 	hasHeaders := strings.Contains(diff, "--- ") && strings.Contains(diff, "+++ ")
 
@@ -91,31 +95,108 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 		diff = header + diff
 	}
 
-	// validate hunk headers format
-	hunkRegex := regexp.MustCompile(`@@\s*-(\d+)(?:,(\d+))?\s*\+(\d+)(?:,(\d+))?\s*@@`)
-	if !hunkRegex.MatchString(diff) {
-		return "", fmt.Errorf("invalid hunk header format. Required format: '@@ -startLine,count +startLine,count @@' (example: '@@ -1,3 +1,4 @@')")
-	}
-
-	// validate diff lines format
+	// improve hunk header validation and auto-fix some common issues
 	lines := strings.Split(diff, "\n")
+	var fixedLines []string
 	inHunk := false
+
+	hunkRegex := regexp.MustCompile(`@@\s*-(\d+)(?:,(\d+))?\s*\+(\d+)(?:,(\d+))?\s*@@`)
+
 	for i, line := range lines {
 		if strings.HasPrefix(line, "@@") {
+			// validate and potentially fix hunk header
+			if !hunkRegex.MatchString(line) {
+				// try to auto-fix common hunk header issues
+				fixedLine := fixHunkHeader(line)
+				if fixedLine != "" && hunkRegex.MatchString(fixedLine) {
+					fmt.Printf("%s Auto-fixed hunk header: '%s' -> '%s'\n",
+						ui.Warning("FIX"), line, fixedLine)
+					line = fixedLine
+				} else {
+					return "", fmt.Errorf("invalid hunk header format at line %d: '%s'. Required format: '@@ -startLine,count +startLine,count @@' (example: '@@ -1,3 +1,4 @@')", i+1, line)
+				}
+			}
 			inHunk = true
+			fixedLines = append(fixedLines, line)
 			continue
 		}
+
 		if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") {
+			fixedLines = append(fixedLines, line)
 			continue
 		}
+
 		if inHunk && line != "" {
+			// auto-fix common line prefix issues
 			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-") {
-				return "", fmt.Errorf("invalid diff line format at line %d: '%s'. Each line must start with space ' ' (context), '+' (added), or '-' (removed)", i+1, line)
+				// try to auto-fix: if line looks like it should be context, add space prefix
+				if !strings.Contains(line, "{{") && !strings.Contains(line, "}}") &&
+					!strings.HasPrefix(line, "\\") { // ignore "\ No newline at end of file"
+					fixedLine := " " + line
+					fmt.Printf("%s Auto-fixed line format: added space prefix to line %d\n",
+						ui.Warning("FIX"), i+1)
+					line = fixedLine
+				} else {
+					return "", fmt.Errorf("invalid diff line format at line %d: '%s'. Each line must start with space ' ' (context), '+' (added), or '-' (removed)", i+1, line)
+				}
+			}
+		}
+
+		fixedLines = append(fixedLines, line)
+	}
+
+	return strings.Join(fixedLines, "\n"), nil
+}
+
+// fixHunkHeader attempts to auto-fix common hunk header format issues
+func fixHunkHeader(line string) string {
+	// remove extra spaces and normalize format
+	line = strings.TrimSpace(line)
+
+	// handle @@ without proper spacing
+	if strings.HasPrefix(line, "@@") && strings.HasSuffix(line, "@@") {
+		inner := strings.TrimSpace(line[2 : len(line)-2])
+
+		// handle cases like "@@-1,3+1,4@@" (no spaces)
+		if strings.Contains(inner, "-") && strings.Contains(inner, "+") {
+			// split by + to get old and new parts
+			plusIndex := strings.Index(inner, "+")
+			if plusIndex > 0 {
+				oldPart := strings.TrimSpace(inner[:plusIndex])
+				newPart := strings.TrimSpace(inner[plusIndex:])
+
+				// ensure parts start with - and + respectively
+				if !strings.HasPrefix(oldPart, "-") {
+					oldPart = "-" + oldPart
+				}
+				if !strings.HasPrefix(newPart, "+") {
+					newPart = "+" + newPart
+				}
+
+				return fmt.Sprintf("@@ %s %s @@", oldPart, newPart)
+			}
+		}
+
+		// try to parse with spaces (handle extra whitespace)
+		parts := strings.Fields(inner)
+		if len(parts) >= 2 {
+			// look for patterns like "-1,3 +1,4" or "-1 +1"
+			var oldPart, newPart string
+			for _, part := range parts {
+				if strings.HasPrefix(part, "-") && oldPart == "" {
+					oldPart = part
+				} else if strings.HasPrefix(part, "+") && newPart == "" {
+					newPart = part
+				}
+			}
+
+			if oldPart != "" && newPart != "" {
+				return fmt.Sprintf("@@ %s %s @@", oldPart, newPart)
 			}
 		}
 	}
 
-	return diff, nil
+	return ""
 }
 
 // logDiffApplication logs information about what diff is being applied
@@ -161,64 +242,121 @@ func applyPatchWithValidation(patchFile, targetFile string) (string, error) {
 	}
 	defer os.Remove(backupFile) // clean up backup on success
 
-	// apply patch with timeout and detailed error handling
+	// try multiple patch strategies for better compatibility
+	strategies := []patchStrategy{
+		{
+			name: "strict",
+			args: []string{"-u", "-p0", "--no-backup-if-mismatch", "--reject-file=/dev/null", "--batch", "--verbose"},
+		},
+		{
+			name: "with fuzz",
+			args: []string{"-u", "-p0", "--fuzz=3", "--no-backup-if-mismatch", "--reject-file=/dev/null", "--batch", "--verbose"},
+		},
+		{
+			name: "ignore whitespace",
+			args: []string{"-u", "-p0", "-l", "--fuzz=3", "--no-backup-if-mismatch", "--reject-file=/dev/null", "--batch", "--verbose"},
+		},
+		{
+			name: "p1 strip",
+			args: []string{"-u", "-p1", "--fuzz=3", "--no-backup-if-mismatch", "--reject-file=/dev/null", "--batch", "--verbose"},
+		},
+	}
+
+	var lastError error
+	var lastStderr, lastStdout string
+
+	for _, strategy := range strategies {
+		// restore from backup before each attempt
+		if err := copyFile(backupFile, targetFile); err != nil {
+			return "", fmt.Errorf("failed to restore file from backup: %v", err)
+		}
+
+		fmt.Printf("%s Trying patch strategy: %s\n", ui.Info("PATCH"), strategy.name)
+
+		success, stdout, stderr, err := attemptPatch(patchFile, targetFile, strategy.args)
+
+		if success {
+			// validate that the file was actually modified
+			if err := validatePatchApplication(targetFile, backupFile); err != nil {
+				fmt.Printf("%s Patch applied but validation failed: %v\n", ui.Warning("WARNING"), err)
+				continue // try next strategy
+			}
+
+			fmt.Printf("%s Diff applied successfully to %s (using %s strategy)\n",
+				ui.Success("SUCCESS"), ui.BrightWhite(targetFile), strategy.name)
+
+			getTaskState().RecordFileModified(targetFile)
+			return fmt.Sprintf("diff applied successfully to %s", targetFile), nil
+		}
+
+		// record last error for reporting
+		lastError = err
+		lastStderr = stderr
+		lastStdout = stdout
+
+		fmt.Printf("%s Strategy '%s' failed: %v\n", ui.Warning("WARNING"), strategy.name, err)
+	}
+
+	// all strategies failed, restore file and return error
+	restoreFile(backupFile, targetFile)
+
+	// provide detailed error information from the last attempt
+	errorMsg := fmt.Sprintf("all patch strategies failed. Last error: %v", lastError)
+	if lastStderr != "" {
+		errorMsg += fmt.Sprintf("\nStderr: %s", lastStderr)
+	}
+	if lastStdout != "" {
+		errorMsg += fmt.Sprintf("\nStdout: %s", lastStdout)
+	}
+
+	// check for common patch errors and provide helpful suggestions
+	if strings.Contains(lastStderr, "malformed patch") {
+		errorMsg += "\nSuggestion: Check diff format - ensure proper unified diff format with @@ headers"
+	} else if strings.Contains(lastStderr, "can't find file") {
+		errorMsg += "\nSuggestion: Verify file path is correct and file exists"
+	} else if strings.Contains(lastStderr, "Hunk") && strings.Contains(lastStderr, "FAILED") {
+		errorMsg += "\nSuggestion: The diff may not match current file content - check line numbers and context"
+	} else if strings.Contains(lastStderr, "No such file") {
+		errorMsg += "\nSuggestion: Check that the target file path is correct"
+	}
+
+	return "", fmt.Errorf("%s", errorMsg)
+}
+
+// patchStrategy defines a patch application strategy
+type patchStrategy struct {
+	name string
+	args []string
+}
+
+// attemptPatch tries to apply patch with given arguments
+func attemptPatch(patchFile, targetFile string, args []string) (success bool, stdout, stderr string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "patch", "-u", "-p0", "-i", patchFile, "--no-backup-if-mismatch", "--batch", "--verbose")
+	// build command with patch file input
+	cmdArgs := append(args, "-i", patchFile, targetFile)
+	cmd := exec.CommandContext(ctx, "patch", cmdArgs...)
 	cmd.Dir = "./"
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
 
-	err := cmd.Run()
+	err = cmd.Run()
+
+	stdout = stdoutBuf.String()
+	stderr = stderrBuf.String()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		// restore from backup on timeout
-		restoreFile(backupFile, targetFile)
-		return "", fmt.Errorf("patch command timed out after 30 seconds")
+		return false, stdout, stderr, fmt.Errorf("patch command timed out after 30 seconds")
 	}
 
 	if err != nil {
-		// restore from backup on failure
-		restoreFile(backupFile, targetFile)
-
-		stderrStr := stderr.String()
-		stdoutStr := stdout.String()
-
-		// provide detailed error information
-		errorMsg := fmt.Sprintf("failed to apply patch: %v", err)
-		if stderrStr != "" {
-			errorMsg += fmt.Sprintf("\nStderr: %s", stderrStr)
-		}
-		if stdoutStr != "" {
-			errorMsg += fmt.Sprintf("\nStdout: %s", stdoutStr)
-		}
-
-		// check for common patch errors and provide helpful suggestions
-		if strings.Contains(stderrStr, "malformed patch") {
-			errorMsg += "\nSuggestion: Check diff format - ensure proper unified diff format with @@ headers"
-		} else if strings.Contains(stderrStr, "can't find file") {
-			errorMsg += "\nSuggestion: Verify file path is correct and file exists"
-		} else if strings.Contains(stderrStr, "Hunk") && strings.Contains(stderrStr, "FAILED") {
-			errorMsg += "\nSuggestion: The diff may not match current file content - check line numbers and context"
-		}
-
-		return "", fmt.Errorf("%s", errorMsg)
+		return false, stdout, stderr, fmt.Errorf("patch command failed: %v", err)
 	}
 
-	// validate that the file was actually modified
-	if err := validatePatchApplication(targetFile, backupFile); err != nil {
-		restoreFile(backupFile, targetFile)
-		return "", fmt.Errorf("patch validation failed: %v", err)
-	}
-
-	fmt.Printf("%s Diff applied successfully to %s\n", ui.Success("SUCCESS"), ui.BrightWhite(targetFile))
-
-	getTaskState().RecordFileModified(targetFile)
-
-	return fmt.Sprintf("diff applied successfully to %s", targetFile), nil
+	return true, stdout, stderr, nil
 }
 
 // copyFile creates a copy of the source file
