@@ -34,7 +34,11 @@ func NewReflectionEngine(aiClient AIClient) *ReflectionEngine {
 }
 
 // EvaluateCompletion checks if the task was completed correctly
-func (sre *ReflectionEngine) EvaluateCompletion(ctx context.Context, plan *types.ExecutionPlan, originalTask string) (*ReflectionResult, error) {
+func (sre *ReflectionEngine) EvaluateCompletion(
+	ctx context.Context,
+	plan *types.ExecutionPlan,
+	originalTask string,
+) (*ReflectionResult, error) {
 	promptData := sre.createEvaluationPrompt(plan, originalTask)
 
 	response, err := sre.aiClient.GenerateCode(ctx, promptData)

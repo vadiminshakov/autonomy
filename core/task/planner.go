@@ -10,7 +10,6 @@ import (
 	"github.com/vadiminshakov/autonomy/core/types"
 )
 
-
 // Planner creates and manages execution plans
 type Planner struct {
 	mu sync.RWMutex

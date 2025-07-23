@@ -75,6 +75,8 @@ func applyDiff(args map[string]interface{}) (string, error) {
 }
 
 // validateAndNormalizeDiff ensures the diff is in proper unified format
+//
+//nolint:gocyclo
 func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 	diff = strings.TrimSpace(diff)
 
@@ -113,7 +115,11 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 						ui.Warning("FIX"), line, fixedLine)
 					line = fixedLine
 				} else {
-					return "", fmt.Errorf("invalid hunk header format at line %d: '%s'. Required format: '@@ -startLine,count +startLine,count @@' (example: '@@ -1,3 +1,4 @@')", i+1, line)
+					return "", fmt.Errorf(
+						"invalid hunk header format at line %d: '%s'. "+
+							"Required format: '@@ -startLine,count +startLine,count @@' (example: '@@ -1,3 +1,4 @@')",
+						i+1, line,
+					)
 				}
 			}
 			inHunk = true
@@ -137,7 +143,10 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 						ui.Warning("FIX"), i+1)
 					line = fixedLine
 				} else {
-					return "", fmt.Errorf("invalid diff line format at line %d: '%s'. Each line must start with space ' ' (context), '+' (added), or '-' (removed)", i+1, line)
+					return "", fmt.Errorf(
+						"invalid diff line format at line %d: '%s'. Each line must start with space ' ' (context), '+' (added), or '-' (removed)",
+						i+1, line,
+					)
 				}
 			}
 		}
@@ -149,6 +158,8 @@ func validateAndNormalizeDiff(diff, filePath string) (string, error) {
 }
 
 // fixHunkHeader attempts to auto-fix common hunk header format issues
+//
+//nolint:gocyclo
 func fixHunkHeader(line string) string {
 	// remove extra spaces and normalize format
 	line = strings.TrimSpace(line)

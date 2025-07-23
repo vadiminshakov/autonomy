@@ -187,9 +187,6 @@ func TestCleanupRejFiles(t *testing.T) {
 		t.Fatal(".rej file was not created")
 	}
 
-	// call cleanup function
-	cleanupRejFiles(testFile)
-
 	// verify .rej file is removed
 	if _, err := os.Stat(rejFile); err == nil {
 		t.Error(".rej file was not cleaned up")

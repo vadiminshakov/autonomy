@@ -137,4 +137,4 @@ func analyzeMessageType(msg string) string {
 	}
 
 	return "uncertain"
-} 
+}

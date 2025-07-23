@@ -630,7 +630,8 @@ func (t *Task) handleReflectionResult(reflection *reflection.ReflectionResult) {
 
 		if reflection.ShouldRetry {
 			fmt.Println(ui.Info("💡 Suggestion: Consider continuing or retrying the task"))
-			t.addUserMessage("The reflection system suggests the task is not fully complete. Reason: " + reflection.Reason + ". Please review and continue if needed.")
+			t.addUserMessage("The reflection system suggests the task is not fully complete. Reason: " +
+				reflection.Reason + ". Please review and continue if needed.")
 		}
 	}
 }
