@@ -83,12 +83,24 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		model = "o3"
 	}
 
+	// определяем последнее сообщение пользователя для анализа
+	var lastUserMessage string
+	for i := len(promptData.Messages) - 1; i >= 0; i-- {
+		if promptData.Messages[i].Role == "user" && promptData.Messages[i].Content != "" {
+			lastUserMessage = promptData.Messages[i].Content
+			break
+		}
+	}
+
+	toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
+	toolChoice := convertToOpenAIToolChoice(toolChoiceMode)
+
 	req := openai.ChatCompletionRequest{
 		Model:      model,
 		Messages:   messages,
 		Tools:      tools,
-		ToolChoice: "auto",
-		MaxTokens:  8000,
+		ToolChoice: toolChoice,
+		MaxTokens:  16000,
 	}
 
 	var resp openai.ChatCompletionResponse
@@ -272,4 +284,16 @@ func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*e
 	return &entity.AIResponse{
 		Content: content,
 	}, nil
+}
+
+// convertToOpenAIToolChoice конвертирует общий режим выбора инструментов в формат OpenAI
+func convertToOpenAIToolChoice(mode ToolChoiceMode) string {
+	switch mode {
+	case ToolChoiceModeAuto:
+		return "auto"
+	case ToolChoiceModeAny:
+		return "any"
+	default:
+		return "any"
+	}
 }
