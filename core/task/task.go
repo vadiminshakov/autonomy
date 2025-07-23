@@ -218,7 +218,7 @@ func (t *Task) getStoredPlan() *types.ExecutionPlan {
 // shouldUsePlanning determines if a task should use planning based on complexity
 func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
 	// use planning for tasks with multiple tools
-	if len(calls) >= 3 {
+	if len(calls) >= 2 {
 		return true
 	}
 
