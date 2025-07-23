@@ -22,7 +22,7 @@ func (m *MockAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 	return m.response, nil
 }
 
-func TestSimpleReflectionEngine_EvaluateCompletion_Success(t *testing.T) {
+func TestReflectionEngine_EvaluateCompletion_Success(t *testing.T) {
 	mockClient := &MockAIClient{
 		response: &entity.AIResponse{
 			Content: `COMPLETED: yes
@@ -73,7 +73,7 @@ RETRY: no`,
 	}
 }
 
-func TestSimpleReflectionEngine_EvaluateCompletion_Failure(t *testing.T) {
+func TestReflectionEngine_EvaluateCompletion_Failure(t *testing.T) {
 	mockClient := &MockAIClient{
 		response: &entity.AIResponse{
 			Content: `COMPLETED: no
@@ -116,7 +116,7 @@ RETRY: yes`,
 	}
 }
 
-func TestSimpleReflectionEngine_EvaluateCompletion_AIError_Fallback(t *testing.T) {
+func TestReflectionEngine_EvaluateCompletion_AIError_Fallback(t *testing.T) {
 	mockClient := &MockAIClient{
 		err: errors.New("AI service unavailable"),
 	}
@@ -157,7 +157,7 @@ func TestSimpleReflectionEngine_EvaluateCompletion_AIError_Fallback(t *testing.T
 	}
 }
 
-func TestSimpleReflectionEngine_SimpleEvaluation_RuleBasedLogic(t *testing.T) {
+func TestReflectionEngine_Evaluation_RuleBasedLogic(t *testing.T) {
 	engine := NewReflectionEngine(nil)
 
 	tests := []struct {
@@ -236,7 +236,7 @@ func TestSimpleReflectionEngine_SimpleEvaluation_RuleBasedLogic(t *testing.T) {
 	}
 }
 
-func TestSimpleReflectionEngine_ParseResponse(t *testing.T) {
+func TestReflectionEngine_ParseResponse(t *testing.T) {
 	engine := NewReflectionEngine(nil)
 
 	tests := []struct {
