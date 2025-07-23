@@ -56,6 +56,7 @@ func RunTerminal(client task.AIClient) error {
 		ui.ShowTaskStart(input)
 
 		t := task.NewTask(client)
+		t.SetOriginalTask(input)
 		defer t.Close()
 
 		t.AddUserMessage(input)
