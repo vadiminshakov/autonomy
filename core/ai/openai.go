@@ -71,6 +71,8 @@ func NewOpenai(cfg config.Config) (*OpenAIClient, error) {
 }
 
 // GenerateCode generates AI response using OpenAI API
+//
+//nolint:gocyclo
 func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
 	formatter := &OpenAIFormatter{}
 	messages := formatter.FormatPrompt(&promptData)
