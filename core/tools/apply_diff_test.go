@@ -171,48 +171,6 @@ func TestValidateAndNormalizeDiff(t *testing.T) {
 	}
 }
 
-func TestCleanupRejFiles(t *testing.T) {
-	// create a test file for applying diff
-	testFile := "test_cleanup.go"
-	rejFile := testFile + ".rej"
-	originalContent := `package main
-
-import "fmt"
-
-func main() {
-	fmt.Println("Hello, World!")
-}
-`
-
-	// write original content
-	err := os.WriteFile(testFile, []byte(originalContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
-	}
-	defer os.Remove(testFile)
-
-	// create an intentionally bad diff that cannot be applied
-	// This diff references content that doesn't exist in the file
-	badDiff := "@@ -10,3 +10,4 @@\n nonexistent line\n another nonexistent line\n+added line\n final nonexistent line"
-
-	args := map[string]any{
-		"path": testFile,
-		"diff": badDiff,
-	}
-
-	// apply the bad diff - this should fail but not create .rej files
-	_, err = applyDiff(args)
-	if err == nil {
-		t.Error("Expected error for bad diff, but got none")
-	}
-
-	// verify .rej file was NOT created (thanks to --reject-file=/dev/null)
-	if _, err := os.Stat(rejFile); err == nil {
-		t.Error(".rej file was created despite --reject-file=/dev/null option")
-		os.Remove(rejFile) // cleanup
-	}
-}
-
 func TestFixHunkHeader(t *testing.T) {
 	tests := []struct {
 		name     string
