@@ -216,21 +216,6 @@ func (t *Task) getStoredPlan() *types.ExecutionPlan {
 		}
 	}
 
-	// fallback to stored tool calls (from plan_execution tool)
-	if tools.HasStoredToolCalls() {
-		taskDesc, toolCalls, err := tools.GetStoredToolCalls()
-		if err != nil {
-			log.Printf("Error retrieving stored tool calls: %v", err)
-			return nil
-		}
-
-		plan := t.planner.CreatePlan(toolCalls)
-		tools.ClearStoredToolCalls()
-
-		log.Printf("Created execution plan from stored tool calls for: %s", taskDesc)
-		return plan
-	}
-
 	return nil
 }
 

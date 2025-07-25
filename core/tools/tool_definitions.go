@@ -42,8 +42,7 @@ func GetToolDescriptions() []entity.ToolDefinition {
 		"get_task_summary":      "Get human-readable summary of task progress",
 		"reset_task_state":      "Reset task execution state",
 		"check_tool_usage":      "Check if and how many times a specific tool has been used",
-		"plan_execution":        "Create an execution plan for complex tasks with multiple tools",
-		"decompose_task":        "AI-powered task decomposition: breaks complex tasks into executable steps using intelligent analysis",
+		"decompose_task":        "Task decomposition: breaks complex tasks into executable steps using intelligent analysis",
 	}
 
 	var defs []entity.ToolDefinition
@@ -174,24 +173,6 @@ func GetToolDescriptions() []entity.ToolDefinition {
 				"tool": map[string]string{"type": "string"},
 			}
 			schema["required"] = []string{"tool"}
-
-		case "plan_execution":
-			schema["properties"] = map[string]any{
-				"task_description": map[string]string{"type": "string"},
-				"tools_needed": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"tool":   map[string]string{"type": "string"},
-							"args":   map[string]any{"type": "object"},
-							"reason": map[string]string{"type": "string"},
-						},
-						"required": []string{"tool", "args", "reason"},
-					},
-				},
-			}
-			schema["required"] = []string{"task_description", "tools_needed"}
 
 		case "decompose_task":
 			schema["properties"] = map[string]any{
