@@ -92,15 +92,17 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		}
 	}
 
-	toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
-	toolChoice := convertToOpenAIToolChoice(toolChoiceMode)
-
 	req := openai.ChatCompletionRequest{
-		Model:      model,
-		Messages:   messages,
-		Tools:      tools,
-		ToolChoice: toolChoice,
-		MaxTokens:  16000,
+		Model:     model,
+		Messages:  messages,
+		Tools:     tools,
+		MaxTokens: 16000,
+	}
+
+	if len(tools) > 0 {
+		toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
+		toolChoice := convertToOpenAIToolChoice(toolChoiceMode)
+		req.ToolChoice = toolChoice
 	}
 
 	var resp openai.ChatCompletionResponse
