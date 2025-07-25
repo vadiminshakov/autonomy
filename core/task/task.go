@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vadiminshakov/autonomy/core/decomposition"
 	"github.com/vadiminshakov/autonomy/core/entity"
 	"github.com/vadiminshakov/autonomy/core/reflection"
 	"github.com/vadiminshakov/autonomy/core/tools"
@@ -198,6 +199,24 @@ func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
 
 // getStoredPlan retrieves a stored execution plan if available
 func (t *Task) getStoredPlan() *types.ExecutionPlan {
+	// check for decomposed tasks first (higher priority)
+	if hasDecomposedTask() {
+		decomposedTask, err := getDecomposedTask()
+		if err != nil {
+			log.Printf("Error retrieving decomposed task: %v", err)
+		} else {
+			toolCalls := decomposedTask.ConvertToToolCalls()
+			plan := t.planner.CreatePlan(toolCalls)
+			clearDecomposedTask()
+			
+			log.Printf("Created execution plan from decomposed task: %s", decomposedTask.OriginalTask)
+			fmt.Println(ui.Info("Executing AI-generated task plan:"))
+			fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
+			return plan
+		}
+	}
+
+	// fallback to stored tool calls (from plan_execution tool)
 	if tools.HasStoredToolCalls() {
 		taskDesc, toolCalls, err := tools.GetStoredToolCalls()
 		if err != nil {
@@ -634,4 +653,37 @@ func (t *Task) handleReflectionResult(reflection *reflection.ReflectionResult) {
 				reflection.Reason + ". Please review and continue if needed.")
 		}
 	}
+}
+
+func hasDecomposedTask() bool {
+	state := tools.GetTaskState()
+	hasTask, exists := state.GetContext("has_decomposed_task")
+	return exists && hasTask == true
+}
+
+func getDecomposedTask() (*decomposition.DecompositionResult, error) {
+	state := tools.GetTaskState()
+
+	hasTask, exists := state.GetContext("has_decomposed_task")
+	if !exists || hasTask != true {
+		return nil, fmt.Errorf("no decomposed task found")
+	}
+
+	taskData, exists := state.GetContext("decomposed_task")
+	if !exists {
+		return nil, fmt.Errorf("decomposed task flag set but no task data found")
+	}
+
+	result, ok := taskData.(*decomposition.DecompositionResult)
+	if !ok {
+		return nil, fmt.Errorf("invalid decomposed task data type")
+	}
+
+	return result, nil
+}
+
+func clearDecomposedTask() {
+	state := tools.GetTaskState()
+	state.SetContext("has_decomposed_task", false)
+	state.SetContext("decomposed_task", nil)
 }
