@@ -2,6 +2,7 @@ package tools
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -276,6 +277,14 @@ func main() {
 }
 
 func TestApplyDiffStrategies(t *testing.T) {
+	t.Logf("Starting TestApplyDiffStrategies")
+
+	// check if patch command is available
+	if _, err := exec.LookPath("patch"); err != nil {
+		t.Fatalf("patch command not found in PATH: %v", err)
+	}
+	t.Logf("patch command found in PATH")
+
 	// create a test file that might require different patch strategies
 	testFile := "test_strategies.go"
 	originalContent := `package main
@@ -293,17 +302,33 @@ func main() {
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
-	defer os.Remove(testFile)
+	defer func() {
+		if err := os.Remove(testFile); err != nil {
+			t.Logf("Failed to remove test file: %v", err)
+		}
+	}()
 
-	// test a diff that might need fuzz matching due to whitespace differences
-	diff := `@@ -4,5 +4,6 @@
- import "fmt"
+	// verify file was created correctly
+	if stat, err := os.Stat(testFile); err != nil {
+		t.Fatalf("Failed to stat test file: %v", err)
+	} else {
+		t.Logf("Test file created successfully, size: %d bytes, mode: %v", stat.Size(), stat.Mode())
+	}
+
+	// create a proper unified diff - the line numbers and context must match exactly
+	// original file has 8 lines (1-8), we're modifying around lines 4-8
+	diff := `--- test_strategies.go
++++ test_strategies.go
+@@ -4,5 +4,6 @@
  
  func main() {
  	fmt.Println("Hello, World!")
 +	fmt.Println("Added line!")
  	// existing comment
+ }
 `
+
+	t.Logf("Applying diff:\n%s", diff)
 
 	args := map[string]any{
 		"path": testFile,
@@ -312,8 +337,15 @@ func main() {
 
 	result, err := applyDiff(args)
 	if err != nil {
+		// log additional diagnostic information
+		t.Logf("ApplyDiff failed with error: %v", err)
+		if content, readErr := os.ReadFile(testFile); readErr == nil {
+			t.Logf("Current file content:\n%s", string(content))
+		}
 		t.Fatalf("ApplyDiff with strategies failed: %v", err)
 	}
+
+	t.Logf("ApplyDiff result: %s", result)
 
 	if !strings.Contains(result, "diff applied successfully") {
 		t.Errorf("Expected success message, got: %s", result)
@@ -324,6 +356,8 @@ func main() {
 	if err != nil {
 		t.Fatalf("Failed to read modified file: %v", err)
 	}
+
+	t.Logf("Modified file content:\n%s", string(modifiedContent))
 
 	if !strings.Contains(string(modifiedContent), "Added line!") {
 		t.Errorf("Expected modified content to contain 'Added line!', got: %s", string(modifiedContent))
