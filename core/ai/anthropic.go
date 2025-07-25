@@ -98,19 +98,21 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 		model = anthropic.ModelClaude4Sonnet20250514
 	}
 
-	toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
-	toolChoice := convertToAnthropicToolChoice(toolChoiceMode)
-
 	params := anthropic.MessageNewParams{
-		Model:      model,
-		MaxTokens:  16000,
-		Messages:   msgs,
-		Tools:      anthropicTools,
-		ToolChoice: toolChoice,
+		Model:     model,
+		MaxTokens: 16000,
+		Messages:  msgs,
+		Tools:     anthropicTools,
 		System: []anthropic.TextBlockParam{{
 			Text: pd.SystemPrompt,
 			Type: constant.Text("text"),
 		}},
+	}
+
+	if len(anthropicTools) > 0 {
+		toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
+		toolChoice := convertToAnthropicToolChoice(toolChoiceMode)
+		params.ToolChoice = toolChoice
 	}
 
 	var resp *anthropic.Message
