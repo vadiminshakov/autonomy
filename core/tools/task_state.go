@@ -77,6 +77,11 @@ func checkToolUsage(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Tool '%s' has been used %d times", toolName, count), nil
 }
 
+// GetTaskState returns the global task state instance
+func GetTaskState() *taskState {
+	return getTaskState()
+}
+
 // getTaskState returns the global task state instance
 func getTaskState() *taskState {
 	stateOnce.Do(func() {
