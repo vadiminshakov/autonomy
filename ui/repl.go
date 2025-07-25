@@ -17,10 +17,9 @@ type REPLCommands struct {
 	readline *readline.Instance
 }
 
-// NewREPL creates a new REPL interface
-func NewREPL() *REPLCommands {
-	// configure readline with history and auto-completion
-	rl, err := readline.NewEx(&readline.Config{
+// createReadline creates a new readline instance with standard configuration
+func createReadline() (*readline.Instance, error) {
+	return readline.NewEx(&readline.Config{
 		Prompt:            "",
 		HistoryFile:       "/tmp/autonomy_history",
 		AutoComplete:      completer,
@@ -28,6 +27,11 @@ func NewREPL() *REPLCommands {
 		EOFPrompt:         "exit",
 		HistorySearchFold: true,
 	})
+}
+
+// NewREPL creates a new REPL interface
+func NewREPL() *REPLCommands {
+	rl, err := createReadline()
 	if err != nil {
 		panic(err)
 	}
@@ -202,7 +206,20 @@ func ShowTaskComplete() {
 
 func (r *REPLCommands) reconfig() bool {
 	fmt.Println()
+
+	if r.readline != nil {
+		r.readline.Close()
+	}
+
 	_, err := config.InteractiveSetup()
+
+	rl, reinitErr := createReadline()
+	if reinitErr != nil {
+		fmt.Println(Error("failed to reinitialize readline: " + reinitErr.Error()))
+		return false
+	}
+	r.readline = rl
+
 	if err != nil {
 		fmt.Println(Error("failed to reconfigure: " + err.Error()))
 		fmt.Println()

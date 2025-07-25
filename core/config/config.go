@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -114,11 +115,8 @@ func InteractiveSetup() (Config, error) {
 		}
 		cfg.Provider = provChoice
 
-		// API key (masked)
-		keyPrompt := promptui.Prompt{
-			Label: "Enter API key",
-		}
-		key, err := keyPrompt.Run()
+		// API key
+		key, err := readInput("Enter API key: ")
 		if err != nil {
 			return cfg, err
 		}
@@ -206,10 +204,7 @@ func InteractiveSetup() (Config, error) {
 		cfg.BaseURL = strings.TrimSpace(bu)
 
 		// API key (optional)
-		keyPrompt := promptui.Prompt{
-			Label: "Enter API key (leave blank if not required)",
-		}
-		key, err := keyPrompt.Run()
+		key, err := readInput("Enter API key (leave blank if not required): ")
 		if err != nil {
 			return cfg, err
 		}
@@ -240,6 +235,17 @@ func InteractiveSetup() (Config, error) {
 	fmt.Println("Configuration saved to ~/.autonomy/config.json ✅")
 
 	return cfg, nil
+}
+
+// readInput reads input from terminal
+func readInput(prompt string) (string, error) {
+	fmt.Print(prompt)
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(input), nil
 }
 
 // HasValidCredentials checks if the config has valid credentials
