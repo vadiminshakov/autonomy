@@ -160,7 +160,7 @@ func InteractiveSetup() (Config, error) {
 				"google/gemini-2.5-pro",
 				"x-ai/grok-4",
 				"moonshotai/kimi-k2",
-				"qwen/qwen3-coder",				
+				"qwen/qwen3-coder",
 				"deepseek/deepseek-chat-v3-0324",
 			}
 		case "anthropic":

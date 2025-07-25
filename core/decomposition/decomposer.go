@@ -18,12 +18,12 @@ type AIClient interface {
 
 // TaskStep represents a single step in task decomposition
 type TaskStep struct {
-	ID          string                 `json:"id"`
-	Description string                 `json:"description"`
-	Tool        string                 `json:"tool"`
-	Args        map[string]interface{} `json:"args"`
-	Reason      string                 `json:"reason"`
-	Dependencies []string              `json:"dependencies,omitempty"`
+	ID           string                 `json:"id"`
+	Description  string                 `json:"description"`
+	Tool         string                 `json:"tool"`
+	Args         map[string]interface{} `json:"args"`
+	Reason       string                 `json:"reason"`
+	Dependencies []string               `json:"dependencies,omitempty"`
 }
 
 // DecompositionResult contains the result of task decomposition
@@ -62,7 +62,11 @@ func NewTaskDecomposer(cfg config.Config) (*TaskDecomposer, error) {
 }
 
 // DecomposeTask breaks down a complex task into executable steps
-func (td *TaskDecomposer) DecomposeTask(ctx context.Context, taskDescription string, availableTools []entity.ToolDefinition) (*DecompositionResult, error) {
+func (td *TaskDecomposer) DecomposeTask(
+	ctx context.Context,
+	taskDescription string,
+	availableTools []entity.ToolDefinition,
+) (*DecompositionResult, error) {
 	prompt := td.buildDecompositionPrompt(taskDescription, availableTools)
 
 	response, err := td.aiClient.GenerateCode(ctx, prompt)
@@ -82,15 +86,17 @@ func (td *TaskDecomposer) DecomposeTask(ctx context.Context, taskDescription str
 // buildToolsList creates a formatted list of available tools from ToolDefinitions
 func (td *TaskDecomposer) buildToolsList(tools []entity.ToolDefinition) string {
 	var toolsList strings.Builder
-	
+
 	for _, tool := range tools {
 		toolsList.WriteString(fmt.Sprintf("- %s: %s, args: %v\n", tool.Name, tool.Description, tool.InputSchema))
 	}
-	
+
 	return toolsList.String()
 }
 
 // buildDecompositionPrompt creates a prompt for task decomposition
+//
+//nolint:lll
 func (td *TaskDecomposer) buildDecompositionPrompt(taskDescription string, availableTools []entity.ToolDefinition) entity.PromptData {
 	toolsList := td.buildToolsList(availableTools)
 	systemPrompt := fmt.Sprintf(`You are a task decomposition expert. Your job is to break down complex programming tasks into specific, executable steps.
@@ -140,7 +146,7 @@ IMPORTANT: Your response must be valid JSON only, no additional text.`, toolsLis
 func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask string) (*DecompositionResult, error) {
 	// Clean the response - remove any markdown formatting
 	content = strings.TrimSpace(content)
-	
+
 	// Remove markdown code blocks
 	if strings.HasPrefix(content, "```json") {
 		content = strings.TrimPrefix(content, "```json")
@@ -149,7 +155,7 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 		content = strings.TrimPrefix(content, "```")
 		content = strings.TrimSpace(content)
 	}
-	
+
 	// Remove trailing code block markers
 	if strings.HasSuffix(content, "```") {
 		content = strings.TrimSuffix(content, "```")
@@ -168,7 +174,7 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 
 	for i := range rawResult.Steps {
 		step := &rawResult.Steps[i]
-		
+
 		// generate ID if missing
 		if step.ID == "" {
 			step.ID = fmt.Sprintf("step_%d", i+1)
@@ -196,43 +202,43 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 // ConvertToToolCalls converts decomposition steps to tool calls
 func (dr *DecompositionResult) ConvertToToolCalls() []entity.ToolCall {
 	toolCalls := make([]entity.ToolCall, len(dr.Steps))
-	
+
 	for i, step := range dr.Steps {
 		toolCalls[i] = entity.ToolCall{
 			Name: step.Tool,
 			Args: step.Args,
 		}
 	}
-	
+
 	return toolCalls
 }
 
 // GetStepSummary returns a human-readable summary of the decomposition
 func (dr *DecompositionResult) GetStepSummary() string {
 	var summary strings.Builder
-	
+
 	summary.WriteString(fmt.Sprintf("Task Decomposition: %s\n\n", dr.OriginalTask))
-	
+
 	if dr.Reasoning != "" {
 		summary.WriteString(fmt.Sprintf("Approach: %s\n\n", dr.Reasoning))
 	}
-	
+
 	summary.WriteString(fmt.Sprintf("Execution Plan (%d steps):\n", len(dr.Steps)))
-	
+
 	for i, step := range dr.Steps {
 		summary.WriteString(fmt.Sprintf("  %d. %s\n", i+1, step.Description))
 		summary.WriteString(fmt.Sprintf("     Tool: %s\n", step.Tool))
-		
+
 		if step.Reason != "" {
 			summary.WriteString(fmt.Sprintf("     Reason: %s\n", step.Reason))
 		}
-		
+
 		if len(step.Dependencies) > 0 {
 			summary.WriteString(fmt.Sprintf("     Dependencies: %v\n", step.Dependencies))
 		}
-		
+
 		summary.WriteString("\n")
 	}
-	
+
 	return summary.String()
 }

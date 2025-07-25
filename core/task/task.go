@@ -208,7 +208,7 @@ func (t *Task) getStoredPlan() *types.ExecutionPlan {
 			toolCalls := decomposedTask.ConvertToToolCalls()
 			plan := t.planner.CreatePlan(toolCalls)
 			clearDecomposedTask()
-			
+
 			log.Printf("Created execution plan from decomposed task: %s", decomposedTask.OriginalTask)
 			fmt.Println(ui.Info("Executing AI-generated task plan:"))
 			fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))

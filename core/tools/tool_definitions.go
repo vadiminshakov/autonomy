@@ -1,4 +1,10 @@
+package tools
+
+import "github.com/vadiminshakov/autonomy/core/entity"
+
 // GetToolDescriptions returns tool definitions
+//
+//nolint:lll,gocyclo
 func GetToolDescriptions() []entity.ToolDefinition {
 	// map of concise tool descriptions understandable by language models
 	toolDesc := map[string]string{

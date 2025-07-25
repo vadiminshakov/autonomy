@@ -48,7 +48,7 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 	state.SetContext("has_execution_plan", true)
 
 	toolCalls := result.ConvertToToolCalls()
-		
+
 	planData := map[string]any{
 		"task_description": taskDesc,
 		"tool_calls":       toolCalls,
@@ -59,7 +59,7 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize plan: %v", err)
 	}
-	
+
 	state.SetContext("execution_plan", string(planJSON))
 
 	summary := result.GetStepSummary()
