@@ -21,11 +21,6 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
-    - name: Install patch
-      run: |
-        which patch || echo "patch not found"
-        patch --version || echo "patch version check failed"
-
     - name: Cache Go modules
       uses: actions/cache@v3
       with:

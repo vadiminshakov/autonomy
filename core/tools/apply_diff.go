@@ -345,20 +345,10 @@ func attemptPatch(patchFile, targetFile string, args []string) (success bool, st
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// check if patch command exists
-	patchPath, lookErr := exec.LookPath("patch")
-	if lookErr != nil {
-		return false, "", "", fmt.Errorf("patch command not found in PATH: %v", lookErr)
-	}
-
 	// build command with patch file input
 	cmdArgs := append(args, "-i", patchFile, targetFile)
 	cmd := exec.CommandContext(ctx, "patch", cmdArgs...)
 	cmd.Dir = "./"
-
-	// log the command we're about to run for debugging
-	fmt.Printf("%s Running patch command: %s %v\n",
-		ui.Info("DEBUG"), patchPath, cmdArgs)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -368,14 +358,6 @@ func attemptPatch(patchFile, targetFile string, args []string) (success bool, st
 
 	stdout = stdoutBuf.String()
 	stderr = stderrBuf.String()
-
-	// log command output for debugging
-	if stdout != "" {
-		fmt.Printf("%s Patch stdout: %s\n", ui.Info("DEBUG"), stdout)
-	}
-	if stderr != "" {
-		fmt.Printf("%s Patch stderr: %s\n", ui.Info("DEBUG"), stderr)
-	}
 
 	if ctx.Err() == context.DeadlineExceeded {
 		return false, stdout, stderr, fmt.Errorf("patch command timed out after 30 seconds")
