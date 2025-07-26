@@ -10,6 +10,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private messageHistory: Array<{type: 'user' | 'agent' | 'system', content: string, timestamp: Date}> = [];
     private outputBuffer = '';
     private bufferTimer?: NodeJS.Timeout;
+    private autoStartEnabled = false;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -56,7 +57,9 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
         this.updateWebviewState();
         
-        this.autoStartAgent();
+        if (this.autoStartEnabled) {
+            this.autoStartAgent();
+        }
     }
 
     public setAutonomyAgent(agent: AutonomyAgent | undefined) {
@@ -66,6 +69,13 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
     public forceUpdateWebviewState() {
         this.updateWebviewState();
+    }
+
+    public enableAutoStart() {
+        this.autoStartEnabled = true;
+        if (this._view) {
+            this.autoStartAgent();
+        }
     }
 
     public sendAgentOutput(output: string, type: 'stdout' | 'stderr') {
@@ -110,15 +120,25 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             }
 
             console.log('webviewProvider: Auto-starting agent...');
-            this.sendMessage('system', 'Starting Autonomy agent...');
+            this.sendMessage('system', 'Checking Autonomy installation...');
             
+            // First try to run install check command to ensure Autonomy is installed
+            try {
+                await vscode.commands.executeCommand('autonomy.installCli');
+                // Wait a bit for installation to complete
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (installError) {
+                console.log('webviewProvider: Install check failed, continuing with agent start...');
+            }
+            
+            this.sendMessage('system', 'Starting Autonomy agent...');
             await vscode.commands.executeCommand('autonomy.start', true);
             
             this.sendMessage('system', 'Autonomy agent is ready! You can now send tasks.');
             
         } catch (error) {
             console.error('webviewProvider: Error auto-starting agent:', error);
-            this.sendMessage('system', `Failed to start agent: ${error}. Please check your configuration in the Settings tab.`);
+            this.sendMessage('system', `Failed to start agent: ${error}. Please run "Autonomy: Install Autonomy CLI" command or check your configuration in the Settings tab.`);
         }
     }
 

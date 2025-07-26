@@ -10,12 +10,20 @@ export class ConfigurationManager {
         
         const vscodeConfig = vscode.workspace.getConfiguration('autonomy');
         
+        const provider = globalConfig?.provider || vscodeConfig.get<string>('provider') || 'openai';
+        
+        const baseUrlDefaults = {
+            'openai': 'https://api.openai.com/v1',
+            'anthropic': 'https://api.anthropic.com', 
+            'openrouter': 'https://openrouter.ai/api/v1'
+        };
+        
         return {
             executablePath: globalConfig?.executable_path || vscodeConfig.get<string>('executablePath') || 'autonomy',
-            provider: globalConfig?.provider || vscodeConfig.get<string>('provider') || 'openai',
+            provider: provider,
             model: globalConfig?.model || vscodeConfig.get<string>('model') || 'o3',
             apiKey: globalConfig?.api_key || vscodeConfig.get<string>('apiKey') || '',
-            baseURL: globalConfig?.base_url || vscodeConfig.get<string>('baseURL'),
+            baseURL: globalConfig?.base_url || vscodeConfig.get<string>('baseURL') || baseUrlDefaults[provider as keyof typeof baseUrlDefaults],
             maxIterations: globalConfig?.max_iterations || vscodeConfig.get<number>('maxIterations') || 100,
             enableReflection: globalConfig?.enable_reflection !== undefined ? globalConfig.enable_reflection : vscodeConfig.get<boolean>('enableReflection') || true,
             skipExecutableValidation: vscodeConfig.get<boolean>('skipExecutableValidation') || false
@@ -68,13 +76,13 @@ export class ConfigurationManager {
         let models: string[] = [];
         switch (selectedProvider) {
             case 'openai':
-                models = ['o3', 'o1', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'];
+                models = ['o4', 'o3', 'gpt-4.1', 'gpt-4o'];
                 break;
             case 'anthropic':
-                models = ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
+                models = ['claude-4-opus', 'claude-4-sonnet-20250514', 'claude-3-7-sonnet'];
                 break;
             case 'openrouter':
-                models = ['openai/o3', 'anthropic/claude-3.5-sonnet', 'google/gemini-pro'];
+                models = ['google/gemini-2.5-pro', 'x-ai/grok-4', 'moonshotai/kimi-k2', 'qwen/qwen3-coder', 'deepseek/deepseek-chat-v3-0324'];
                 break;
         }
 
@@ -89,16 +97,22 @@ export class ConfigurationManager {
             }
         }
 
-        if (selectedProvider === 'openrouter') {
-            const baseURL = await vscode.window.showInputBox({
-                prompt: 'Enter base URL (optional)',
-                placeHolder: 'https://openrouter.ai/api/v1',
-                ignoreFocusOut: true
-            });
+        const baseUrlDefaults = {
+            'openai': 'https://api.openai.com/v1',
+            'anthropic': 'https://api.anthropic.com', 
+            'openrouter': 'https://openrouter.ai/api/v1'
+        };
 
-            if (baseURL) {
-                await config.update('baseURL', baseURL, vscode.ConfigurationTarget.Workspace);
-            }
+        const defaultProvider = selectedProvider || 'openai';
+        const baseURL = await vscode.window.showInputBox({
+            prompt: 'Enter base URL (optional)',
+            placeHolder: baseUrlDefaults[defaultProvider as keyof typeof baseUrlDefaults],
+            value: baseUrlDefaults[defaultProvider as keyof typeof baseUrlDefaults],
+            ignoreFocusOut: true
+        });
+
+        if (baseURL) {
+            await config.update('baseURL', baseURL, vscode.ConfigurationTarget.Workspace);
         }
 
         const executablePath = await vscode.window.showInputBox({

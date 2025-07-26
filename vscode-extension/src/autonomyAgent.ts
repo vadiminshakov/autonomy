@@ -36,6 +36,10 @@ export class AutonomyAgent {
         this.isWebviewMode = enabled;
         if (enabled) {
             console.log('autonomyAgent: Webview mode enabled - terminal output disabled');
+            // Hide the output channel when in webview mode
+            this.outputChannel.hide();
+        } else {
+            console.log('autonomyAgent: Webview mode disabled - terminal output enabled');
         }
     }
 
@@ -59,6 +63,9 @@ export class AutonomyAgent {
             if (!this.isWebviewMode) {
                 this.outputChannel.show();
                 this.outputChannel.appendLine('Starting Autonomy agent...');
+            } else {
+                // Ensure output channel is hidden in webview mode
+                this.outputChannel.hide();
             }
 
             this.process = spawn(this.config.executablePath, ['--headless'], {
@@ -129,7 +136,9 @@ export class AutonomyAgent {
                 this.taskProvider.refresh();
             }
         } catch (error) {
-            this.outputChannel.appendLine(`Error running task: ${error}`);
+            if (!this.isWebviewMode) {
+                this.outputChannel.appendLine(`Error running task: ${error}`);
+            }
             if (this.currentTask) {
                 this.currentTask.status = 'failed';
                 this.taskProvider.refresh();
@@ -142,14 +151,14 @@ export class AutonomyAgent {
         console.log(`autonomyAgent: Validating executable: ${this.config.executablePath}`);
         
         return new Promise((resolve, reject) => {
+            const testProcess = spawn(this.config.executablePath, ['--version'], {
+                stdio: 'pipe'
+            });
+
             const timeout = setTimeout(() => {
                 testProcess.kill();
                 reject(new Error(`Timeout validating autonomy executable. Please ensure the 'autonomy' executable is installed and available in your PATH, or configure the correct path in settings.`));
             }, 3000);
-
-            const testProcess = spawn(this.config.executablePath, ['--version'], {
-                stdio: 'pipe'
-            });
 
             testProcess.on('error', (error) => {
                 clearTimeout(timeout);
@@ -302,17 +311,9 @@ export class AutonomyAgent {
         if (isTaskCompleted && this.currentTask && this.currentTask.status === 'running') {
             this.currentTask.status = 'completed';
             this.taskProvider.refresh();
-            
-            if (!this.isWebviewMode) {
-                vscode.window.showInformationMessage('Task completed successfully!');
-            }
         } else if (isTaskFailed && this.currentTask && this.currentTask.status === 'running') {
             this.currentTask.status = 'failed';
             this.taskProvider.refresh();
-            
-            if (!this.isWebviewMode) {
-                vscode.window.showErrorMessage('Task failed to complete.');
-            }
         } else if (output.includes('📋 Tool')) {
             const toolMatch = output.match(/📋 Tool (\w+)/);
             if (toolMatch && this.currentTask) {

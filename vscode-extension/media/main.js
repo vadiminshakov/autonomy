@@ -117,6 +117,11 @@ function addMessage(type, content, timestamp = null) {
 
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Отключаем спиннер когда получаем ответ от агента
+    if (type === 'agent' || type === 'system') {
+        setLoading(sendButton, false);
+    }
 }
 
 function clearMessages() {
@@ -234,19 +239,19 @@ function onProviderChange() {
 function updateModelOptions(provider) {
     const modelConfigs = {
         'openai': {
-            placeholder: 'e.g., o3, gpt-4o, gpt-4o-mini',
+            placeholder: 'e.g., o4, o3, gpt-4.1',
             default: 'o3',
-            models: ['o3', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']
+            models: ['o4', 'o3', 'gpt-4.1', 'gpt-4o']
         },
         'anthropic': {
-            placeholder: 'e.g., claude-3-5-sonnet-20241022',
-            default: 'claude-3-5-sonnet-20241022',
-            models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229']
+            placeholder: 'e.g., claude-4-opus, claude-4-sonnet-20250514',
+            default: 'claude-4-opus',
+            models: ['claude-4-opus', 'claude-4-sonnet-20250514', 'claude-3-7-sonnet']
         },
         'openrouter': {
-            placeholder: 'e.g., openai/o3, anthropic/claude-3.5-sonnet',
-            default: 'openai/o3',
-            models: ['openai/o3', 'anthropic/claude-3.5-sonnet', 'google/gemini-pro-1.5', 'meta-llama/llama-3.1-405b']
+            placeholder: 'e.g., google/gemini-2.5-pro, x-ai/grok-4',
+            default: 'google/gemini-2.5-pro',
+            models: ['google/gemini-2.5-pro', 'x-ai/grok-4', 'moonshotai/kimi-k2', 'qwen/qwen3-coder', 'deepseek/deepseek-chat-v3-0324']
         }
     };
     
@@ -282,9 +287,9 @@ function shouldUpdateModel(provider, currentModel) {
 
 function updateBaseUrl(provider) {
     const baseUrls = {
-        'openai': 'https:
-        'anthropic': 'https:
-        'openrouter': 'https:
+        'openai': 'https://api.openai.com/v1',
+        'anthropic': 'https://api.anthropic.com',
+        'openrouter': 'https://openrouter.ai/api/v1'
     };
     
     
