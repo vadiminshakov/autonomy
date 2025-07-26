@@ -2,7 +2,7 @@
   "name": "autonomy-vscode",
   "displayName": "Autonomy AI Coding Agent",
   "description": "VS Code integration for Autonomy AI coding agent",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "autonomy",
   "icon": "media/icon.png",
   "engines": {
