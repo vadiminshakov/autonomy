@@ -2,9 +2,14 @@
   "name": "autonomy-vscode",
   "displayName": "Autonomy AI Coding Agent",
   "description": "VS Code integration for Autonomy AI coding agent",
-  "version": "0.0.2",
+  "version": "0.0.6",
   "publisher": "autonomy",
   "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vadiminshakov/autonomy.git",
+    "directory": "vscode-extension"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -49,6 +54,11 @@
         "command": "autonomy.openWebview",
         "title": "Open Autonomy Chat",
         "category": "Autonomy"
+      },
+      {
+        "command": "autonomy.installCli",
+        "title": "Install Autonomy CLI",
+        "category": "Autonomy"
       }
     ],
     "keybindings": [
@@ -82,6 +92,9 @@
         },
         {
           "command": "autonomy.openWebview"
+        },
+        {
+          "command": "autonomy.installCli"
         }
       ]
     },
@@ -133,6 +146,11 @@
           "type": "boolean",
           "default": false,
           "description": "Skip validation of autonomy executable on startup (use if validation fails but executable works)"
+        },
+        "autonomy.autoInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically install Autonomy CLI if not found"
         }
       }
     },
