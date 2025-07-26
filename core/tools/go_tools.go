@@ -31,7 +31,7 @@ func GoTest(args map[string]interface{}) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return out.String(), fmt.Errorf("go test timed out after 5 minutes")
+			return out.String(), fmt.Errorf("go test timed out")
 		}
 		return out.String(), fmt.Errorf("go test failed: %v", err)
 	}
@@ -64,7 +64,7 @@ func GoVet(args map[string]interface{}) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return out.String(), fmt.Errorf("go vet timed out after 2 minutes")
+			return out.String(), fmt.Errorf("go vet timed out")
 		}
 		return out.String(), fmt.Errorf("go vet issues: %v", err)
 	}

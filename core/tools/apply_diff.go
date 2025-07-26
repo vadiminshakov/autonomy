@@ -360,7 +360,7 @@ func attemptPatch(patchFile, targetFile string, args []string) (success bool, st
 	stderr = stderrBuf.String()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return false, stdout, stderr, fmt.Errorf("patch command timed out after 30 seconds")
+		return false, stdout, stderr, fmt.Errorf("patch command timed out")
 	}
 
 	if err != nil {
