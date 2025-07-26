@@ -1,0 +1,187 @@
+{
+  "name": "autonomy-vscode",
+  "displayName": "Autonomy AI Coding Agent",
+  "description": "VS Code integration for Autonomy AI coding agent",
+  "version": "0.0.1",
+  "publisher": "autonomy",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Snippets"
+  ],
+  "keywords": [
+    "ai",
+    "coding-assistant",
+    "automation",
+    "productivity"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "autonomy.start",
+        "title": "Start Autonomy",
+        "category": "Autonomy"
+      },
+      {
+        "command": "autonomy.runTask",
+        "title": "Run Task with Autonomy",
+        "category": "Autonomy"
+      },
+      {
+        "command": "autonomy.configure",
+        "title": "Configure Autonomy",
+        "category": "Autonomy"
+      },
+      {
+        "command": "autonomy.stop",
+        "title": "Stop Autonomy",
+        "category": "Autonomy"
+      },
+      {
+        "command": "autonomy.openWebview",
+        "title": "Open Autonomy Chat",
+        "category": "Autonomy"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "autonomy.runTask",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "autonomy.runTask",
+          "group": "autonomy",
+          "when": "editorTextFocus"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "autonomy.start"
+        },
+        {
+          "command": "autonomy.runTask"
+        },
+        {
+          "command": "autonomy.configure"
+        },
+        {
+          "command": "autonomy.stop"
+        },
+        {
+          "command": "autonomy.openWebview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Autonomy",
+      "properties": {
+        "autonomy.executablePath": {
+          "type": "string",
+          "default": "autonomy",
+          "description": "Path to the autonomy executable"
+        },
+        "autonomy.provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "openrouter"],
+          "default": "openai",
+          "description": "AI provider to use"
+        },
+        "autonomy.model": {
+          "type": "string",
+          "default": "o3",
+          "description": "AI model to use"
+        },
+        "autonomy.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the AI provider"
+        },
+        "autonomy.baseURL": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL for API requests (optional)"
+        },
+        "autonomy.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start Autonomy when VS Code opens"
+        },
+        "autonomy.maxIterations": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of task iterations"
+        },
+        "autonomy.enableReflection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable reflection system for task completion evaluation"
+        },
+        "autonomy.skipExecutableValidation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip validation of autonomy executable on startup (use if validation fails but executable works)"
+        }
+      }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "autonomyTaskView",
+          "name": "Autonomy Tasks",
+          "when": "autonomy:active"
+        }
+      ],
+      "autonomy": [
+        {
+          "type": "webview",
+          "id": "autonomyWebview",
+          "name": "Chat & Settings"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "autonomy",
+          "title": "Autonomy",
+          "icon": "media/icon.png"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.4",
+    "@vscode/test-electron": "^2.2.0",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "child_process": "^1.0.2"
+  }
+}
