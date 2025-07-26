@@ -137,29 +137,9 @@ export function activate(context: vscode.ExtensionContext) {
         installCommand
     );
 
-    const autoStart = vscode.workspace.getConfiguration('autonomy').get<boolean>('autoStart');
-    if (autoStart) {
-        vscode.commands.executeCommand('autonomy.start');
-    }
+    // Auto-start removed since we only use global config now
 
-    const configChangeListener = vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('autonomy')) {
-            if (autonomyAgent) {
-                vscode.window.showInformationMessage(
-                    'Autonomy configuration changed. Restart the agent to apply changes.',
-                    'Restart'
-                ).then(selection => {
-                    if (selection === 'Restart') {
-                        vscode.commands.executeCommand('autonomy.stop').then(() => {
-                            vscode.commands.executeCommand('autonomy.start');
-                        });
-                    }
-                });
-            }
-        }
-    });
-
-    context.subscriptions.push(configChangeListener);
+    // Config change listener removed since we only use global config now
 }
 
 async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
@@ -228,10 +208,22 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                 } else {
                     console.log('Autonomy installed successfully!');
                     
-                    // Update VS Code settings to use local bin path
-                    const config = vscode.workspace.getConfiguration('autonomy');
+                    // Update global config to use local bin path
                     const homePath = os.homedir();
-                    await config.update('executablePath', `${homePath}/.local/bin/autonomy`, vscode.ConfigurationTarget.Global);
+                    const configPath = path.join(homePath, '.autonomy', 'config.json');
+                    try {
+                        let globalConfig = {};
+                        if (fs.existsSync(configPath)) {
+                            globalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                        }
+                        globalConfig.executable_path = `${homePath}/.local/bin/autonomy`;
+                        if (!fs.existsSync(path.dirname(configPath))) {
+                            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+                        }
+                        fs.writeFileSync(configPath, JSON.stringify(globalConfig, null, 2));
+                    } catch (error) {
+                        console.error('Failed to update global config:', error);
+                    }
                     
                     vscode.window.showInformationMessage('Autonomy CLI installed successfully! Please restart VS Code to update PATH.');
                     resolve(true);
@@ -273,7 +265,7 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
         console.log('checkAndInstallAutonomy: Autonomy exists:', autonomyExists);
         
         if (!autonomyExists) {
-            const autoInstall = vscode.workspace.getConfiguration('autonomy').get<boolean>('autoInstall', true);
+            const autoInstall = true; // Always auto-install since we don't use VSCode settings
             
             if (autoInstall) {
                 console.log('checkAndInstallAutonomy: Autonomy not found, installing automatically...');
@@ -303,7 +295,6 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                     if (selection === 'Install Manually') {
                         vscode.env.openExternal(vscode.Uri.parse('https://github.com/vadiminshakov/autonomy#installation'));
                     } else if (selection === 'Enable Auto-install') {
-                        vscode.workspace.getConfiguration('autonomy').update('autoInstall', true, vscode.ConfigurationTarget.Global);
                         checkAndInstallAutonomy(context);
                     }
                 });

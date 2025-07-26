@@ -8,9 +8,11 @@ export class ConfigurationManager {
     getConfiguration(): AutonomyConfig {
         const globalConfig = this.readGlobalConfig();
         
-        const vscodeConfig = vscode.workspace.getConfiguration('autonomy');
+        if (!globalConfig) {
+            throw new Error('Configuration file not found at ~/.autonomy/config.json. Please create the configuration file.');
+        }
         
-        const provider = globalConfig?.provider || vscodeConfig.get<string>('provider') || 'openai';
+        const provider = globalConfig.provider || 'openai';
         
         const baseUrlDefaults = {
             'openai': 'https://api.openai.com/v1',
@@ -19,14 +21,14 @@ export class ConfigurationManager {
         };
         
         return {
-            executablePath: globalConfig?.executable_path || vscodeConfig.get<string>('executablePath') || 'autonomy',
+            executablePath: globalConfig.executable_path || 'autonomy',
             provider: provider,
-            model: globalConfig?.model || vscodeConfig.get<string>('model') || 'o3',
-            apiKey: globalConfig?.api_key || vscodeConfig.get<string>('apiKey') || '',
-            baseURL: globalConfig?.base_url || vscodeConfig.get<string>('baseURL') || baseUrlDefaults[provider as keyof typeof baseUrlDefaults],
-            maxIterations: globalConfig?.max_iterations || vscodeConfig.get<number>('maxIterations') || 100,
-            enableReflection: globalConfig?.enable_reflection !== undefined ? globalConfig.enable_reflection : vscodeConfig.get<boolean>('enableReflection') || true,
-            skipExecutableValidation: vscodeConfig.get<boolean>('skipExecutableValidation') || false
+            model: globalConfig.model || 'o3',
+            apiKey: globalConfig.api_key || '',
+            baseURL: globalConfig.base_url || baseUrlDefaults[provider as keyof typeof baseUrlDefaults],
+            maxIterations: globalConfig.max_iterations || 100,
+            enableReflection: globalConfig.enable_reflection !== undefined ? globalConfig.enable_reflection : true,
+            skipExecutableValidation: false
         };
     }
 
@@ -41,7 +43,7 @@ export class ConfigurationManager {
                 console.log('configManager: Successfully loaded global config');
                 return config;
             } else {
-                console.log('configManager: Global config file not found, using VS Code settings');
+                console.log('configManager: Global config file not found');
                 return null;
             }
         } catch (error) {
@@ -50,8 +52,25 @@ export class ConfigurationManager {
         }
     }
 
+    private async writeGlobalConfig(config: any): Promise<void> {
+        try {
+            const configDir = path.join(os.homedir(), '.autonomy');
+            const configPath = path.join(configDir, 'config.json');
+            
+            if (!fs.existsSync(configDir)) {
+                fs.mkdirSync(configDir, { recursive: true });
+            }
+            
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+            console.log('configManager: Configuration saved to:', configPath);
+        } catch (error) {
+            console.error('configManager: Error writing global config:', error);
+            throw error;
+        }
+    }
+
     async configure(): Promise<void> {
-        const config = vscode.workspace.getConfiguration('autonomy');
+        const currentConfig = this.readGlobalConfig() || {};
         
         const providers = ['openai', 'anthropic', 'openrouter'];
         const selectedProvider = await vscode.window.showQuickPick(providers, {
@@ -60,7 +79,7 @@ export class ConfigurationManager {
         });
 
         if (selectedProvider) {
-            await config.update('provider', selectedProvider, vscode.ConfigurationTarget.Workspace);
+            currentConfig.provider = selectedProvider;
         }
 
         const apiKey = await vscode.window.showInputBox({
@@ -70,7 +89,7 @@ export class ConfigurationManager {
         });
 
         if (apiKey) {
-            await config.update('apiKey', apiKey, vscode.ConfigurationTarget.Workspace);
+            currentConfig.api_key = apiKey;
         }
 
         let models: string[] = [];
@@ -93,7 +112,7 @@ export class ConfigurationManager {
             });
 
             if (selectedModel) {
-                await config.update('model', selectedModel, vscode.ConfigurationTarget.Workspace);
+                currentConfig.model = selectedModel;
             }
         }
 
@@ -112,17 +131,17 @@ export class ConfigurationManager {
         });
 
         if (baseURL) {
-            await config.update('baseURL', baseURL, vscode.ConfigurationTarget.Workspace);
+            currentConfig.base_url = baseURL;
         }
 
         const executablePath = await vscode.window.showInputBox({
             prompt: 'Enter path to autonomy executable',
-            value: config.get<string>('executablePath') || 'autonomy',
+            value: currentConfig.executable_path || 'autonomy',
             ignoreFocusOut: true
         });
 
         if (executablePath) {
-            await config.update('executablePath', executablePath, vscode.ConfigurationTarget.Workspace);
+            currentConfig.executable_path = executablePath;
         }
 
         const advancedSettings = await vscode.window.showQuickPick(
@@ -136,7 +155,7 @@ export class ConfigurationManager {
         if (advancedSettings === 'Yes') {
             const maxIterations = await vscode.window.showInputBox({
                 prompt: 'Maximum task iterations',
-                value: config.get<number>('maxIterations')?.toString() || '100',
+                value: currentConfig.max_iterations?.toString() || '100',
                 validateInput: (value) => {
                     const num = parseInt(value);
                     if (isNaN(num) || num <= 0) {
@@ -147,7 +166,7 @@ export class ConfigurationManager {
             });
 
             if (maxIterations) {
-                await config.update('maxIterations', parseInt(maxIterations), vscode.ConfigurationTarget.Workspace);
+                currentConfig.max_iterations = parseInt(maxIterations);
             }
 
             const enableReflection = await vscode.window.showQuickPick(
@@ -159,22 +178,11 @@ export class ConfigurationManager {
             );
 
             if (enableReflection) {
-                await config.update('enableReflection', enableReflection === 'Yes', vscode.ConfigurationTarget.Workspace);
-            }
-
-            const autoStart = await vscode.window.showQuickPick(
-                ['Yes', 'No'],
-                {
-                    placeHolder: 'Auto-start agent when VS Code opens?',
-                    canPickMany: false
-                }
-            );
-
-            if (autoStart) {
-                await config.update('autoStart', autoStart === 'Yes', vscode.ConfigurationTarget.Workspace);
+                currentConfig.enable_reflection = enableReflection === 'Yes';
             }
         }
 
+        await this.writeGlobalConfig(currentConfig);
         vscode.window.showInformationMessage('Autonomy configuration updated successfully!');
     }
 
