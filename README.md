@@ -1,4 +1,4 @@
-<img src="media/icon.png" alt="Autonomy Logo" width="128" height="128"> # Autonomy – Go AI Coding Agent
+<img src="https://raw.githubusercontent.com/vadiminshakov/autonomy/main/vscode-extension/media/icon.png" alt="Autonomy Logo" width="128" height="128"> # Autonomy – Go AI Coding Agent
 
 ![Tests](https://github.com/vadiminshakov/autonomy/actions/workflows/test.yml/badge.svg)
 ![Build](https://github.com/vadiminshakov/autonomy/actions/workflows/release.yml/badge.svg)
