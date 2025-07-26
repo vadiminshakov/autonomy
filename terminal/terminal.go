@@ -1,7 +1,10 @@
 package terminal
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/vadiminshakov/autonomy/core/ai"
 	"github.com/vadiminshakov/autonomy/core/config"
@@ -67,6 +70,53 @@ func RunTerminal(client task.AIClient) error {
 		} else {
 			ui.ShowTaskComplete()
 		}
+	}
+
+	return nil
+}
+
+// RunHeadless runs the terminal in headless mode for VS Code extension integration
+func RunHeadless(client task.AIClient) error {
+	fmt.Printf("Autonomy started in headless mode\n")
+	fmt.Printf("Ready to receive tasks...\n")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	
+	for scanner.Scan() {
+		input := strings.TrimSpace(scanner.Text())
+		
+		if input == "" {
+			continue
+		}
+		
+		// Handle special commands
+		switch input {
+		case "exit", "quit":
+			fmt.Printf("Shutting down autonomy agent\n")
+			return nil
+		case "status":
+			fmt.Printf("Agent is running and ready\n")
+			continue
+		}
+
+		fmt.Printf("Processing task: %s\n", input)
+
+		t := task.NewTask(client)
+		t.SetOriginalTask(input)
+		defer t.Close()
+
+		t.AddUserMessage(input)
+
+		err := t.ProcessTask()
+		if err != nil {
+			fmt.Printf("Task failed: %v\n", err)
+		} else {
+			fmt.Printf("Task completed successfully\n")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading input: %v", err)
 	}
 
 	return nil
