@@ -34,7 +34,7 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 
 	availableTools := getAvailableToolDefinitions()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	result, err := decomposer.DecomposeTask(ctx, taskDesc, availableTools)

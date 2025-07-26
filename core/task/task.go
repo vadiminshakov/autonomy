@@ -337,6 +337,7 @@ func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
 // getToolTimeout returns appropriate timeout for different tool types
 func (t *Task) getToolTimeout(toolName string) time.Duration {
 	longRunningTools := map[string]time.Duration{
+		"decompose_task":  9 * time.Minute,
 		"execute_command": 3 * time.Minute,
 		"go_test":         2 * time.Minute,
 		"search_index":    2 * time.Minute,
