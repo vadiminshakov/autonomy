@@ -164,7 +164,7 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
         });
     }
     
-    function installAutonomy(): Promise<boolean> {
+    function installAutonomy(retries = 5): Promise<boolean> {
         return new Promise((resolve) => {
             const platform = os.platform();
             let installCommand: string;
@@ -190,45 +190,73 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                     return;
             }
             
-            console.log('Installing Autonomy CLI...');
-            vscode.window.showInformationMessage('Installing Autonomy CLI... This may take a moment.');
-            
-            exec(installCommand, { timeout: 60000 }, async (error: any, stdout: string, stderr: string) => {
-                if (error) {
-                    console.error('Auto-installation failed:', error.message);
-                    vscode.window.showErrorMessage(
-                        'Autonomy CLI auto-installation failed. Please install manually.',
-                        'Open Instructions'
-                    ).then(selection => {
-                        if (selection === 'Open Instructions') {
-                            vscode.env.openExternal(vscode.Uri.parse('https://github.com/vadiminshakov/autonomy#installation'));
+            const attemptInstall = (attempt: number) => {
+                console.log(`Installing Autonomy CLI... (attempt ${6 - attempt}/${5})`);
+                vscode.window.showInformationMessage(`Installing Autonomy CLI... (attempt ${6 - attempt}/${5})`);
+                
+                exec(installCommand, { timeout: 60000 }, async (error: any, stdout: string, stderr: string) => {
+                    if (error) {
+                        console.error(`Auto-installation attempt ${6 - attempt} failed:`, error.message);
+                        
+                        if (attempt > 0) {
+                            console.log(`Retrying installation... (${attempt} attempts left)`);
+                            setTimeout(() => attemptInstall(attempt - 1), 2000);
+                            return;
                         }
-                    });
-                    resolve(false);
-                } else {
-                    console.log('Autonomy installed successfully!');
-                    
-                    // Update global config to use local bin path
-                    const homePath = os.homedir();
-                    const configPath = path.join(homePath, '.autonomy', 'config.json');
-                    try {
-                        let globalConfig = {};
-                        if (fs.existsSync(configPath)) {
-                            globalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                        
+                        vscode.window.showErrorMessage(
+                            'Autonomy CLI auto-installation failed after 5 attempts. Please install manually.',
+                            'Open Instructions'
+                        ).then(selection => {
+                            if (selection === 'Open Instructions') {
+                                vscode.env.openExternal(vscode.Uri.parse('https://github.com/vadiminshakov/autonomy#installation'));
+                            }
+                        });
+                        resolve(false);
+                    } else {
+                        // Verify installation
+                        const homePath = os.homedir();
+                        const binaryPath = path.join(homePath, '.local', 'bin', 'autonomy');
+                        
+                        if (!fs.existsSync(binaryPath)) {
+                            console.error('Binary not found after installation');
+                            
+                            if (attempt > 0) {
+                                console.log(`Binary verification failed, retrying... (${attempt} attempts left)`);
+                                setTimeout(() => attemptInstall(attempt - 1), 2000);
+                                return;
+                            }
+                            
+                            vscode.window.showErrorMessage('Installation completed but binary not found. Please install manually.');
+                            resolve(false);
+                            return;
                         }
-                        globalConfig.executable_path = `${homePath}/.local/bin/autonomy`;
-                        if (!fs.existsSync(path.dirname(configPath))) {
-                            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+                        
+                        console.log('Autonomy installed and verified successfully!');
+                        
+                        // Update global config to use local bin path
+                        const configPath = path.join(homePath, '.autonomy', 'config.json');
+                        try {
+                            let globalConfig: any = {};
+                            if (fs.existsSync(configPath)) {
+                                globalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                            }
+                            globalConfig.executable_path = binaryPath;
+                            if (!fs.existsSync(path.dirname(configPath))) {
+                                fs.mkdirSync(path.dirname(configPath), { recursive: true });
+                            }
+                            fs.writeFileSync(configPath, JSON.stringify(globalConfig, null, 2));
+                        } catch (error) {
+                            console.error('Failed to update global config:', error);
                         }
-                        fs.writeFileSync(configPath, JSON.stringify(globalConfig, null, 2));
-                    } catch (error) {
-                        console.error('Failed to update global config:', error);
+                        
+                        vscode.window.showInformationMessage('Autonomy CLI installed successfully!');
+                        resolve(true);
                     }
-                    
-                    vscode.window.showInformationMessage('Autonomy CLI installed successfully! Please restart VS Code to update PATH.');
-                    resolve(true);
-                }
-            });
+                });
+            };
+            
+            attemptInstall(retries - 1);
         });
     }
     

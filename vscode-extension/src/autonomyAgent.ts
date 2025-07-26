@@ -263,7 +263,8 @@ export class AutonomyAgent {
                 this.outputChannel.append(`ERROR: ${error}`);
             }
             
-            if (this.outputCallback) {
+            // Only send actual errors to chat, not info/debug logs
+            if (this.outputCallback && this.isActualError(error)) {
                 this.outputCallback(`ERROR: ${error}`, 'stderr');
             }
         });
@@ -274,7 +275,6 @@ export class AutonomyAgent {
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`\nAutonomy process exited with code ${code}, signal ${signal}`);
             }
-            
         });
 
         this.process.on('error', (error) => {
@@ -314,13 +314,32 @@ export class AutonomyAgent {
         } else if (isTaskFailed && this.currentTask && this.currentTask.status === 'running') {
             this.currentTask.status = 'failed';
             this.taskProvider.refresh();
-        } else if (output.includes('📋 Tool')) {
-            const toolMatch = output.match(/📋 Tool (\w+)/);
+        } else if (output.includes('Tool')) {
+            const toolMatch = output.match(/Tool (\w+)/);
             if (toolMatch && this.currentTask) {
                 this.currentTask.tooltip = `Running tool: ${toolMatch[1]}`;
                 this.taskProvider.refresh();
             }
         }
+    }
+
+    private isActualError(stderr: string): boolean {
+        const lowerStderr = stderr.toLowerCase();
+        
+        // Filter out info/debug logs that are not actual errors
+        if (lowerStderr.includes('task iteration')) return false;
+        if (lowerStderr.includes('=== task iteration')) return false;
+        if (lowerStderr.includes('info:')) return false;
+        if (lowerStderr.includes('debug:')) return false;
+        if (lowerStderr.includes('log:')) return false;
+        
+        // Only show actual errors, warnings, and failures
+        return lowerStderr.includes('error:') || 
+               lowerStderr.includes('failed') || 
+               lowerStderr.includes('panic') || 
+               lowerStderr.includes('fatal') ||
+               lowerStderr.includes('warning:') ||
+               lowerStderr.includes('warn:');
     }
 
     getOutputChannel(): vscode.OutputChannel {

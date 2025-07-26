@@ -2,7 +2,7 @@
   "name": "autonomy-vscode",
   "displayName": "Autonomy AI Coding Agent",
   "description": "VS Code integration for Autonomy AI coding agent",
-  "version": "0.0.6",
+  "version": "0.0.10",
   "publisher": "autonomy",
   "icon": "media/icon.png",
   "repository": {
@@ -108,7 +108,11 @@
         },
         "autonomy.provider": {
           "type": "string",
-          "enum": ["openai", "anthropic", "openrouter"],
+          "enum": [
+            "openai",
+            "anthropic",
+            "openrouter"
+          ],
           "default": "openai",
           "description": "AI provider to use"
         },

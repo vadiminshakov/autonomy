@@ -124,6 +124,36 @@ function addMessage(type, content, timestamp = null) {
     }
 }
 
+function addThinkingIndicator(messageId) {
+    // Remove any existing thinking indicator
+    removeThinkingIndicator();
+    
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'message thinking';
+    thinkingDiv.id = messageId;
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'thinking-content';
+    contentDiv.innerHTML = '<span class="thinking-dots">thinking</span><span class="dots">...</span>';
+    thinkingDiv.appendChild(contentDiv);
+
+    messagesContainer.appendChild(thinkingDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function removeThinkingIndicator(messageId = null) {
+    if (messageId) {
+        const thinkingElement = document.getElementById(messageId);
+        if (thinkingElement) {
+            thinkingElement.remove();
+        }
+    } else {
+        // Remove all thinking indicators
+        const thinkingElements = document.querySelectorAll('.message.thinking');
+        thinkingElements.forEach(el => el.remove());
+    }
+}
+
 function clearMessages() {
     messagesContainer.innerHTML = '';
 }
@@ -347,6 +377,14 @@ window.addEventListener('message', event => {
         
         case 'configSaved':
             setLoading(saveConfigBtn, false);
+            break;
+        
+        case 'addThinking':
+            addThinkingIndicator(message.messageId);
+            break;
+        
+        case 'removeThinking':
+            removeThinkingIndicator(message.messageId);
             break;
     }
 });

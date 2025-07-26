@@ -417,3 +417,43 @@ body {
         transform: rotate(360deg);
     }
 }
+
+/* Thinking indicator */
+.message.thinking {
+    background-color: var(--vscode-list-hoverBackground);
+    color: var(--vscode-foreground);
+    margin-right: auto;
+    margin-left: 8px;
+    border-left: 3px solid var(--vscode-charts-blue);
+    opacity: 0.7;
+    font-style: italic;
+}
+
+.thinking-content {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.thinking-dots {
+    color: var(--vscode-charts-blue);
+}
+
+.dots {
+    animation: thinking-dots 1.5s ease-in-out infinite;
+}
+
+@keyframes thinking-dots {
+    0%, 20% {
+        color: var(--vscode-charts-blue);
+        transform: none;
+    }
+    50% {
+        color: var(--vscode-foreground);
+        transform: scale(1.1);
+    }
+    100% {
+        color: var(--vscode-charts-blue);
+        transform: none;
+    }
+}

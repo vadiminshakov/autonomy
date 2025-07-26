@@ -8,9 +8,8 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private autonomyAgent?: AutonomyAgent;
     private configManager: ConfigurationManager;
     private messageHistory: Array<{type: 'user' | 'agent' | 'system', content: string, timestamp: Date}> = [];
-    private outputBuffer = '';
-    private bufferTimer?: NodeJS.Timeout;
     private autoStartEnabled = false;
+    private thinkingMessageId: string | null = null;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -79,33 +78,27 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     public sendAgentOutput(output: string, type: 'stdout' | 'stderr') {
-        this.outputBuffer += output;
-        
-        if (this.bufferTimer) {
-            clearTimeout(this.bufferTimer);
+        // Send output immediately without buffering
+        if (output.trim()) {
+            const filteredOutput = this.filterOutput(output);
+            
+            if (filteredOutput.trim()) {
+                const messageType = type === 'stderr' ? 'system' : 'agent';
+                
+                // Hide thinking indicator before showing new message
+                this.hideThinkingIndicator();
+                
+                this.addToHistory(messageType, filteredOutput);
+                this.sendMessage(messageType, filteredOutput);
+                
+                // Show thinking indicator after agent messages
+                if (messageType === 'agent') {
+                    this.showThinkingIndicator();
+                }
+            }
         }
-        
-        this.bufferTimer = setTimeout(() => {
-            this.flushOutputBuffer(type);
-        }, 500);
     }
 
-    private flushOutputBuffer(type: 'stdout' | 'stderr') {
-        if (!this.outputBuffer.trim()) {
-            this.outputBuffer = '';
-            return;
-        }
-        
-        const filteredOutput = this.filterOutput(this.outputBuffer);
-        
-        if (filteredOutput) {
-            const messageType = type === 'stderr' ? 'system' : 'agent';
-            this.addToHistory(messageType, filteredOutput);
-            this.sendMessage(messageType, filteredOutput);
-        }
-        
-        this.outputBuffer = '';
-    }
 
     private async autoStartAgent() {
         if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
@@ -143,59 +136,54 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private filterOutput(output: string): string {
-            let filtered = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
-        
+        // Remove ANSI escape codes
+        let filtered = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
         filtered = filtered.replace(/\r[^\n]/g, '');
         filtered = filtered.replace(/\r/g, '');
         
-        filtered = filtered.replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '');
-        filtered = filtered.replace(/[▁▂▃▄▅▆▇█]/g, '');
-        filtered = filtered.replace(/[░▒▓]/g, '');
-        filtered = filtered.replace(/[◐◓◑◒]/g, '');
-        filtered = filtered.replace(/[◴◷◶◵]/g, '');
-        filtered = filtered.replace(/[▏▎▍▌▋▊▉]/g, '');
-        filtered = filtered.replace(/[┤┐└┴┬├─│]/g, '');
-        filtered = filtered.replace(/[⋮⋯⋰⋱]/g, '');
-        filtered = filtered.replace(/[◯●○◉]/g, '');
-        
-        filtered = filtered.replace(/\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*/g, '');
-        filtered = filtered.replace(/\|\s*\/\s*-\s*\\\s*/g, '');
-        
-        filtered = filtered.replace(/\.{3,}/g, '');
-        filtered = filtered.replace(/\s*\.\s*\.\s*\.\s*/g, '');
-        
-        filtered = filtered.replace(/\n{3,}/g, '\n\n');
-        filtered = filtered.replace(/[ \t]{3,}/g, '  ');
-        
+        // Filter out thinking text and repetitive messages
         const lines = filtered.split('\n');
         const meaningfulLines = lines.filter(line => {
-            const trimmed = line.trim();
+            const trimmed = line.trim().toLowerCase();
+            
+            // Filter out any line containing "thinking"
+            if (trimmed.includes('thinking')) return false;
+            
+            // Filter out task iteration messages
+            if (trimmed.includes('=== task iteration')) return false;
+            if (trimmed.includes('task iteration')) return false;
+            
+            // Filter out empty lines
             if (!trimmed) return false;
-            
-            if (/^thinking[.\s]*$/i.test(trimmed)) return false;
-            if (/^(thinking|processing|working)[.\s]*$/i.test(trimmed)) return false;
-            if (/thinking\s+thinking/i.test(trimmed)) return false;
-            if (/^(\s*thinking\s*){2,}/i.test(trimmed)) return false;
-            if (trimmed.split(/\s+/).filter(word => word.toLowerCase() === 'thinking').length > 1) return false;
-            
-            if (/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏▁▂▃▄▅▆▇█░▒▓◐◓◑◒◴◷◶◵▏▎▍▌▋▊▉┤┐└┴┬├─│⋮⋯⋰⋱◯●○◉\s\.\-\|\/\\]+$/.test(trimmed)) return false;
-            
-            if (trimmed.length < 3 && /^[\.\-\s\|\/\\]*$/.test(trimmed)) return false;
-            
-            if (/^(.)\1{5,}$/.test(trimmed)) return false;
-            
-            const words = trimmed.split(/\s+/);
-            const thinkingCount = words.filter(word => word.toLowerCase() === 'thinking').length;
-            if (thinkingCount > words.length / 2) return false;
             
             return true;
         });
         
         const result = meaningfulLines.join('\n').trim();
-        
-        return result.length > 5 ? result : '';
+        return result;
     }
 
+    private showThinkingIndicator() {
+        if (this.thinkingMessageId) {
+            this.hideThinkingIndicator();
+        }
+        
+        this.thinkingMessageId = 'thinking-' + Date.now();
+        this._view?.webview.postMessage({
+            type: 'addThinking',
+            messageId: this.thinkingMessageId
+        });
+    }
+
+    private hideThinkingIndicator() {
+        if (this.thinkingMessageId) {
+            this._view?.webview.postMessage({
+                type: 'removeThinking',
+                messageId: this.thinkingMessageId
+            });
+            this.thinkingMessageId = null;
+        }
+    }
 
     private async handleSendMessage(message: string) {
         this.addToHistory('user', message);
@@ -216,32 +204,49 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleConfigure(config: any) {
+        console.log('webviewProvider: handleConfigure called with config:', config);
+        
         try {
-            const vscodeConfig = vscode.workspace.getConfiguration('autonomy');
+            // Read current global config or create new one
+            const currentConfig = this.configManager.readGlobalConfig() || {};
+            console.log('webviewProvider: Current global config:', currentConfig);
             
+            // Update config with new values
             if (config.provider) {
-                await vscodeConfig.update('provider', config.provider, vscode.ConfigurationTarget.Workspace);
+                console.log('webviewProvider: Updating provider to:', config.provider);
+                currentConfig.provider = config.provider;
             }
             if (config.apiKey) {
-                await vscodeConfig.update('apiKey', config.apiKey, vscode.ConfigurationTarget.Workspace);
+                console.log('webviewProvider: Updating API key (masked)');
+                currentConfig.api_key = config.apiKey;
             }
             if (config.model) {
-                await vscodeConfig.update('model', config.model, vscode.ConfigurationTarget.Workspace);
+                console.log('webviewProvider: Updating model to:', config.model);
+                currentConfig.model = config.model;
             }
             if (config.executablePath) {
-                await vscodeConfig.update('executablePath', config.executablePath, vscode.ConfigurationTarget.Workspace);
+                console.log('webviewProvider: Updating executable path to:', config.executablePath);
+                currentConfig.executable_path = config.executablePath;
             }
             if (config.baseURL) {
-                await vscodeConfig.update('baseURL', config.baseURL, vscode.ConfigurationTarget.Workspace);
+                console.log('webviewProvider: Updating base URL to:', config.baseURL);
+                currentConfig.base_url = config.baseURL;
             }
 
-            this.sendMessage('system', 'Configuration saved successfully');
+            console.log('webviewProvider: Final config to write:', currentConfig);
+
+            // Write to global config
+            await this.configManager.writeGlobalConfig(currentConfig);
+            console.log('webviewProvider: Global config written successfully');
+
+            this.sendMessage('system', 'Configuration saved successfully to ~/.autonomy/config.json');
             this.updateWebviewState();
             
             this._view?.webview.postMessage({
                 type: 'configSaved'
             });
         } catch (error) {
+            console.error('webviewProvider: Error in handleConfigure:', error);
             this.sendMessage('system', `Failed to save configuration: ${error}`);
             
             this._view?.webview.postMessage({
@@ -251,26 +256,48 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private handleGetConfig() {
-        const config = this.configManager.getConfiguration();
-        console.log('webviewProvider: Sending config to webview:', {
-            provider: config.provider,
-            model: config.model,
-            hasApiKey: !!config.apiKey,
-            baseURL: config.baseURL
-        });
-        
-        this._view?.webview.postMessage({
-            type: 'configData',
-            config: {
+        try {
+            const config = this.configManager.getConfiguration();
+            console.log('webviewProvider: Loaded config from global file:', {
                 provider: config.provider,
                 model: config.model,
-                executablePath: config.executablePath,
-                baseURL: config.baseURL,
                 hasApiKey: !!config.apiKey,
-                maxIterations: config.maxIterations,
-                enableReflection: config.enableReflection
-            }
-        });
+                baseURL: config.baseURL,
+                executablePath: config.executablePath
+            });
+            
+            this._view?.webview.postMessage({
+                type: 'configData',
+                config: {
+                    provider: config.provider,
+                    model: config.model,
+                    executablePath: config.executablePath,
+                    baseURL: config.baseURL,
+                    apiKey: config.apiKey, // Send actual API key so UI can show it
+                    hasApiKey: !!config.apiKey,
+                    maxIterations: config.maxIterations,
+                    enableReflection: config.enableReflection
+                }
+            });
+            
+            console.log('webviewProvider: Sent config to webview with baseURL:', config.baseURL);
+        } catch (error) {
+            // If no global config exists, send empty config
+            console.log('webviewProvider: No global config found, sending default config. Error:', error);
+            this._view?.webview.postMessage({
+                type: 'configData',
+                config: {
+                    provider: 'openai',
+                    model: 'o3',
+                    executablePath: 'autonomy',
+                    baseURL: 'https://api.openai.com/v1',
+                    apiKey: '',
+                    hasApiKey: false,
+                    maxIterations: 100,
+                    enableReflection: true
+                }
+            });
+        }
     }
 
     private handleClearHistory() {

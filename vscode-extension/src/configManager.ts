@@ -32,7 +32,7 @@ export class ConfigurationManager {
         };
     }
 
-    private readGlobalConfig(): any {
+    public readGlobalConfig(): any {
         try {
             const configPath = path.join(os.homedir(), '.autonomy', 'config.json');
             console.log('configManager: Attempting to read global config from:', configPath);
@@ -52,7 +52,7 @@ export class ConfigurationManager {
         }
     }
 
-    private async writeGlobalConfig(config: any): Promise<void> {
+    public async writeGlobalConfig(config: any): Promise<void> {
         try {
             const configDir = path.join(os.homedir(), '.autonomy');
             const configPath = path.join(configDir, 'config.json');
