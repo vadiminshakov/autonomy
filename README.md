@@ -8,7 +8,11 @@ An experimental AI coding agent written in Go.
 
 ![Demo](https://github.com/vadiminshakov/autonomy/releases/download/v0.0.0/demo.gif)
 
-## Install
+## Install as VSCode extension
+
+![VSCode extension](https://marketplace.visualstudio.com/items?itemName=Autonomy.autonomy-vscode)
+
+## Install as terminal agent
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | sudo bash
