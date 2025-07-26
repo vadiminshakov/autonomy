@@ -81,14 +81,14 @@ func RunHeadless(client task.AIClient) error {
 	fmt.Printf("Ready to receive tasks...\n")
 
 	scanner := bufio.NewScanner(os.Stdin)
-	
+
 	for scanner.Scan() {
 		input := strings.TrimSpace(scanner.Text())
-		
+
 		if input == "" {
 			continue
 		}
-		
+
 		// Handle special commands
 		switch input {
 		case "exit", "quit":
