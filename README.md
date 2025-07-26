@@ -10,7 +10,7 @@ An experimental AI coding agent written in Go.
 
 ## Install as VSCode extension
 
-![VSCode extension](https://marketplace.visualstudio.com/items?itemName=Autonomy.autonomy-vscode)
+[VSCode extension](https://marketplace.visualstudio.com/items?itemName=Autonomy.autonomy-vscode)
 
 ## Install as terminal agent
 
