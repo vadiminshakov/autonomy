@@ -139,18 +139,43 @@ download_binary() {
     
     print_status "downloading binary: $DOWNLOAD_URL"
     
+    DOWNLOAD_SUCCESS=false
+    
     if command -v curl &> /dev/null; then
-        if ! curl -sL "$DOWNLOAD_URL" -o "$ARCHIVE_NAME"; then
-            print_error "failed to download binary"
-            exit 1
+        if curl -sL "$DOWNLOAD_URL" -o "$ARCHIVE_NAME"; then
+            DOWNLOAD_SUCCESS=true
         fi
     elif command -v wget &> /dev/null; then
-        if ! wget -q "$DOWNLOAD_URL" -O "$ARCHIVE_NAME"; then
-            print_error "failed to download binary"
-            exit 1
+        if wget -q "$DOWNLOAD_URL" -O "$ARCHIVE_NAME"; then
+            DOWNLOAD_SUCCESS=true
         fi
     else
         print_error "curl or wget is required to download binary"
+        exit 1
+    fi
+    
+    # If download failed and we're on Darwin ARM64, try AMD64 as fallback
+    if [[ "$DOWNLOAD_SUCCESS" == false && "$GOOS" == "darwin" && "$GOARCH" == "arm64" ]]; then
+        print_warning "ARM64 download failed, trying AMD64 binary as fallback (will run under Rosetta)"
+        GOARCH="amd64"
+        ARCHIVE_NAME="autonomy-${GOOS}-${GOARCH}.tar.gz"
+        DOWNLOAD_URL="$REPO_URL/releases/download/$LATEST_RELEASE/$ARCHIVE_NAME"
+        
+        print_status "downloading binary: $DOWNLOAD_URL"
+        
+        if command -v curl &> /dev/null; then
+            if curl -sL "$DOWNLOAD_URL" -o "$ARCHIVE_NAME"; then
+                DOWNLOAD_SUCCESS=true
+            fi
+        elif command -v wget &> /dev/null; then
+            if wget -q "$DOWNLOAD_URL" -O "$ARCHIVE_NAME"; then
+                DOWNLOAD_SUCCESS=true
+            fi
+        fi
+    fi
+    
+    if [[ "$DOWNLOAD_SUCCESS" == false ]]; then
+        print_error "failed to download binary"
         exit 1
     fi
     
@@ -164,7 +189,39 @@ download_binary() {
             exit 1
         fi
     else
-        tar -xzf "$ARCHIVE_NAME"
+        if ! tar -xzf "$ARCHIVE_NAME"; then
+            print_error "failed to extract archive (possibly corrupted)"
+            # If extraction failed and we haven't tried fallback yet, try AMD64 on Darwin ARM64
+            if [[ "$GOOS" == "darwin" && "$GOARCH" == "arm64" ]]; then
+                print_warning "ARM64 archive corrupted, trying AMD64 binary as fallback"
+                rm -f "$ARCHIVE_NAME"
+                GOARCH="amd64"
+                ARCHIVE_NAME="autonomy-${GOOS}-${GOARCH}.tar.gz"
+                DOWNLOAD_URL="$REPO_URL/releases/download/$LATEST_RELEASE/$ARCHIVE_NAME"
+                
+                print_status "downloading binary: $DOWNLOAD_URL"
+                
+                if command -v curl &> /dev/null; then
+                    if ! curl -sL "$DOWNLOAD_URL" -o "$ARCHIVE_NAME"; then
+                        print_error "failed to download AMD64 fallback binary"
+                        exit 1
+                    fi
+                elif command -v wget &> /dev/null; then
+                    if ! wget -q "$DOWNLOAD_URL" -O "$ARCHIVE_NAME"; then
+                        print_error "failed to download AMD64 fallback binary"
+                        exit 1
+                    fi
+                fi
+                
+                print_status "extracting AMD64 archive..."
+                if ! tar -xzf "$ARCHIVE_NAME"; then
+                    print_error "failed to extract AMD64 archive"
+                    exit 1
+                fi
+            else
+                exit 1
+            fi
+        fi
     fi
     
     if [[ ! -f "$BINARY_FILE" ]]; then
