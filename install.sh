@@ -140,18 +140,58 @@ download_binary() {
     print_status "downloading binary: $DOWNLOAD_URL"
     
     DOWNLOAD_SUCCESS=false
+    MAX_RETRIES=3
+    RETRY_COUNT=0
     
-    if command -v curl &> /dev/null; then
-        if curl -sL "$DOWNLOAD_URL" -o "$ARCHIVE_NAME"; then
-            DOWNLOAD_SUCCESS=true
-        fi
-    elif command -v wget &> /dev/null; then
-        if wget -q "$DOWNLOAD_URL" -O "$ARCHIVE_NAME"; then
-            DOWNLOAD_SUCCESS=true
-        fi
-    else
-        print_error "curl or wget is required to download binary"
-        exit 1
+    # Function to attempt download with retries
+    attempt_download() {
+        local url="$1"
+        local output="$2"
+        local attempt=0
+        
+        while [[ $attempt -lt $MAX_RETRIES ]]; do
+            attempt=$((attempt + 1))
+            print_status "download attempt $attempt of $MAX_RETRIES..."
+            
+            if command -v curl &> /dev/null; then
+                # Add more robust curl options: follow redirects, set timeouts, show progress
+                if curl -L --fail --connect-timeout 30 --max-time 300 --retry 2 --retry-delay 5 "$url" -o "$output"; then
+                    # Verify the file was actually downloaded and has content
+                    if [[ -f "$output" && -s "$output" ]]; then
+                        return 0
+                    else
+                        print_warning "downloaded file is empty or doesn't exist"
+                        rm -f "$output"
+                    fi
+                fi
+            elif command -v wget &> /dev/null; then
+                # Add more robust wget options
+                if wget --timeout=30 --tries=3 --retry-connrefused "$url" -O "$output"; then
+                    # Verify the file was actually downloaded and has content
+                    if [[ -f "$output" && -s "$output" ]]; then
+                        return 0
+                    else
+                        print_warning "downloaded file is empty or doesn't exist"
+                        rm -f "$output"
+                    fi
+                fi
+            else
+                print_error "curl or wget is required to download binary"
+                exit 1
+            fi
+            
+            if [[ $attempt -lt $MAX_RETRIES ]]; then
+                print_warning "download failed, retrying in 5 seconds..."
+                sleep 5
+            fi
+        done
+        
+        return 1
+    }
+    
+    # Try to download the primary architecture
+    if attempt_download "$DOWNLOAD_URL" "$ARCHIVE_NAME"; then
+        DOWNLOAD_SUCCESS=true
     fi
     
     # If download failed and we're on Darwin ARM64, try AMD64 as fallback
@@ -163,19 +203,14 @@ download_binary() {
         
         print_status "downloading binary: $DOWNLOAD_URL"
         
-        if command -v curl &> /dev/null; then
-            if curl -sL "$DOWNLOAD_URL" -o "$ARCHIVE_NAME"; then
-                DOWNLOAD_SUCCESS=true
-            fi
-        elif command -v wget &> /dev/null; then
-            if wget -q "$DOWNLOAD_URL" -O "$ARCHIVE_NAME"; then
-                DOWNLOAD_SUCCESS=true
-            fi
+        if attempt_download "$DOWNLOAD_URL" "$ARCHIVE_NAME"; then
+            DOWNLOAD_SUCCESS=true
         fi
     fi
     
     if [[ "$DOWNLOAD_SUCCESS" == false ]]; then
-        print_error "failed to download binary"
+        print_error "failed to download binary after all attempts"
+        print_error "you can try downloading manually from: $REPO_URL/releases"
         exit 1
     fi
     
@@ -242,12 +277,19 @@ download_binary() {
 }
 
 check_permissions() {
-    # For user directories like ~/.local/bin, no sudo needed
-    if [[ "$INSTALL_DIR" == *"$HOME"* ]]; then
+    # Test if we can write to the directory first
+    if [[ -w "$INSTALL_DIR" ]] || mkdir -p "$INSTALL_DIR" 2>/dev/null && [[ -w "$INSTALL_DIR" ]]; then
         USE_SUDO=false
         return 0
     fi
     
+    # For user directories like ~/.local/bin or /tmp, no sudo needed - just try to create
+    if [[ "$INSTALL_DIR" == *"$HOME"* ]] || [[ "$INSTALL_DIR" == /tmp/* ]]; then
+        USE_SUDO=false
+        return 0
+    fi
+    
+    # For system directories, check if we need sudo
     if [[ "$EUID" -ne 0 ]]; then
         print_warning "script not running as root. Trying to install with sudo..."
         if ! sudo -n true 2>/dev/null; then
