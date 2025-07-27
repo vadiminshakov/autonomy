@@ -7,7 +7,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 BINARY_NAME="autonomy"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="$HOME/.local/bin"
 REPO_URL="https://github.com/vadiminshakov/autonomy"
 GITHUB_API_URL="https://api.github.com/repos/vadiminshakov/autonomy"
 
@@ -185,6 +185,12 @@ download_binary() {
 }
 
 check_permissions() {
+    # For user directories like ~/.local/bin, no sudo needed
+    if [[ "$INSTALL_DIR" == *"$HOME"* ]]; then
+        USE_SUDO=false
+        return 0
+    fi
+    
     if [[ "$EUID" -ne 0 ]]; then
         print_warning "script not running as root. Trying to install with sudo..."
         if ! sudo -n true 2>/dev/null; then
@@ -224,6 +230,11 @@ verify_installation() {
     else
         print_warning "binary installed but not found in PATH"
         print_warning "ensure $INSTALL_DIR is in your PATH"
+        if [[ "$INSTALL_DIR" == *"$HOME/.local/bin"* ]]; then
+            print_status "you can add it to your PATH by running:"
+            print_status "echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+            print_status "echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
+        fi
     fi
 }
 
@@ -279,17 +290,11 @@ main() {
     # create install directory if it doesn't exist
     if [[ ! -d "$INSTALL_DIR" ]]; then
         print_status "creating directory $INSTALL_DIR..."
-        if [[ "$INSTALL_DIR" == "/usr/local/bin" ]] || [[ "$INSTALL_DIR" == "/usr/bin" ]]; then
-            sudo mkdir -p "$INSTALL_DIR"
-        else
-            mkdir -p "$INSTALL_DIR"
-        fi
+        mkdir -p "$INSTALL_DIR"
     fi
     
-    # check permissions only for system directories
-    if [[ "$INSTALL_DIR" == "/usr/local/bin" ]] || [[ "$INSTALL_DIR" == "/usr/bin" ]]; then
-        check_permissions
-    fi
+    # check permissions
+    check_permissions
     
     # detect system and download binary
     detect_os_arch
