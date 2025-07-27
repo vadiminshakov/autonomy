@@ -394,6 +394,7 @@ body {
 
 /* Loading state */
 .loading {
+    position: relative;
     opacity: 0.6;
     pointer-events: none;
 }
@@ -410,6 +411,23 @@ body {
     border-radius: 50%;
     border-top-color: transparent;
     animation: spin 1s linear infinite;
+}
+
+/* Button pressed animation */
+.btn-pressed {
+    transform: scale(0.95);
+    transition: transform 0.1s ease-in-out;
+}
+
+/* Disabled save button when no changes */
+.btn-save-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background-color: var(--vscode-button-secondaryBackground);
+}
+
+.btn-save-disabled:hover {
+    background-color: var(--vscode-button-secondaryBackground);
 }
 
 @keyframes spin {

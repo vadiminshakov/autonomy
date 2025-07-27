@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
             autonomyAgent = new AutonomyAgent(config, taskProvider);
             
             // Always set webview mode when using extension, and set output callback
-            autonomyAgent.setOutputCallback((output: string, type: 'stdout' | 'stderr') => {
+            autonomyAgent.setOutputCallback((output: string, type: 'stdout' | 'stderr' | 'task_status') => {
                 webviewProvider.sendAgentOutput(output, type);
             });
             
@@ -139,7 +139,34 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Auto-start removed since we only use global config now
 
-    // Config change listener removed since we only use global config now
+    // Watch for global config changes and restart agent automatically
+    const os = require('os');
+    const path = require('path');
+    const globalConfigPath = path.join(os.homedir(), '.autonomy', 'config.json');
+    
+    const configWatcher = vscode.workspace.createFileSystemWatcher(globalConfigPath);
+    configWatcher.onDidChange(async () => {
+        console.log('Global config changed, restarting autonomy agent...');
+        if (autonomyAgent && autonomyAgent.isRunning()) {
+            await autonomyAgent.stop();
+            try {
+                const config = configManager.getConfiguration();
+                autonomyAgent = new AutonomyAgent(config, taskProvider);
+                autonomyAgent.setOutputCallback((output: string, type: 'stdout' | 'stderr' | 'task_status') => {
+                    webviewProvider.sendAgentOutput(output, type);
+                });
+                autonomyAgent.setWebviewMode(true);
+                await autonomyAgent.start();
+                webviewProvider.setAutonomyAgent(autonomyAgent);
+                vscode.window.showInformationMessage('Autonomy agent restarted due to config changes');
+            } catch (error) {
+                console.error('Failed to restart autonomy agent:', error);
+                vscode.window.showErrorMessage(`Failed to restart Autonomy agent: ${error}`);
+            }
+        }
+    });
+    
+    context.subscriptions.push(configWatcher);
 }
 
 async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
@@ -152,7 +179,17 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
     function checkIfAutonomyExists(): Promise<boolean> {
         console.log('checkIfAutonomyExists: Checking autonomy --version...');
         return new Promise((resolve) => {
-            exec('autonomy --version', (error: any, stdout: string, stderr: string) => {
+            const checkOptions = {
+                env: {
+                    ...process.env,
+                    PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+                    HOME: process.env.HOME || require('os').homedir(),
+                    SHELL: process.env.SHELL || '/bin/bash'
+                },
+                shell: true
+            };
+            
+            exec('autonomy --version', checkOptions, (error: any, stdout: string, stderr: string) => {
                 if (error) {
                     console.log('checkIfAutonomyExists: Command failed:', error.message);
                     resolve(false);
@@ -164,99 +201,107 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
         });
     }
     
-    function installAutonomy(retries = 5): Promise<boolean> {
+    function installAutonomy(): Promise<boolean> {
         return new Promise((resolve) => {
-            const platform = os.platform();
-            let installCommand: string;
+            let attempt = 0;
+            const maxAttempts = 10; // Unlimited with exponential backoff
             
-            switch (platform) {
-                case 'darwin':
-                    const arch = os.arch() === 'arm64' ? 'arm64' : 'amd64';
-                    installCommand = `mkdir -p ~/.local/bin && cd ~/.local/bin && curl -L -o autonomy.tar.gz https://github.com/vadiminshakov/autonomy/releases/latest/download/autonomy-darwin-${arch}.tar.gz && tar -xzf autonomy.tar.gz && rm autonomy.tar.gz && chmod +x autonomy`;
-                    break;
-                case 'linux':
-                    const linuxArch = os.arch() === 'arm64' ? 'arm64' : 'amd64';
-                    installCommand = `mkdir -p ~/.local/bin && cd ~/.local/bin && curl -L -o autonomy.tar.gz https://github.com/vadiminshakov/autonomy/releases/latest/download/autonomy-linux-${linuxArch}.tar.gz && tar -xzf autonomy.tar.gz && rm autonomy.tar.gz && chmod +x autonomy`;
-                    break;
-                case 'win32':
-                    installCommand = 'powershell -Command "iwr -Uri https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.ps1 | iex"';
-                    break;
-                default:
-                    console.log('Unsupported platform:', platform);
-                    vscode.window.showWarningMessage(
-                        'Autonomy CLI auto-installation not supported on this platform. Please install manually from: https://github.com/vadiminshakov/autonomy'
-                    );
-                    resolve(false);
-                    return;
-            }
-            
-            const attemptInstall = (attempt: number) => {
-                console.log(`Installing Autonomy CLI... (attempt ${6 - attempt}/${5})`);
-                vscode.window.showInformationMessage(`Installing Autonomy CLI... (attempt ${6 - attempt}/${5})`);
+            const attemptInstall = () => {
+                attempt++;
+                const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 30000); // Max 30 seconds
                 
-                exec(installCommand, { timeout: 60000 }, async (error: any, stdout: string, stderr: string) => {
+                console.log(`Installing Autonomy CLI... (attempt ${attempt})`);
+                
+                // Send installation status to webview
+                if (webviewProvider) {
+                    webviewProvider.sendAgentOutput(`Installing Autonomy CLI (attempt ${attempt})...`, 'stdout');
+                }
+                
+                const installCommand = 'curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | bash';
+                
+                // Set up proper environment for shell execution
+                const execOptions = { 
+                    timeout: 120000,
+                    env: {
+                        ...process.env,
+                        PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+                        HOME: process.env.HOME || require('os').homedir(),
+                        SHELL: process.env.SHELL || '/bin/bash'
+                    },
+                    shell: true
+                };
+                
+                exec(installCommand, execOptions, async (error: any, stdout: string, stderr: string) => {
                     if (error) {
-                        console.error(`Auto-installation attempt ${6 - attempt} failed:`, error.message);
+                        const errorMsg = `Installation attempt ${attempt} failed: ${error.message}`;
+                        console.error(errorMsg);
+                        console.error('stdout:', stdout);
+                        console.error('stderr:', stderr);
                         
-                        if (attempt > 0) {
-                            console.log(`Retrying installation... (${attempt} attempts left)`);
-                            setTimeout(() => attemptInstall(attempt - 1), 2000);
-                            return;
+                        // Send error to webview chat
+                        if (webviewProvider) {
+                            webviewProvider.sendAgentOutput(`❌ ${errorMsg}`, 'stderr');
+                            if (stderr) {
+                                webviewProvider.sendAgentOutput(`Error details: ${stderr}`, 'stderr');
+                            }
                         }
                         
-                        vscode.window.showErrorMessage(
-                            'Autonomy CLI auto-installation failed after 5 attempts. Please install manually.',
-                            'Open Instructions'
-                        ).then(selection => {
-                            if (selection === 'Open Instructions') {
-                                vscode.env.openExternal(vscode.Uri.parse('https://github.com/vadiminshakov/autonomy#installation'));
+                        if (attempt < maxAttempts) {
+                            const retryMsg = `Retrying in ${backoffMs/1000} seconds... (attempt ${attempt + 1})`;
+                            console.log(retryMsg);
+                            if (webviewProvider) {
+                                webviewProvider.sendAgentOutput(retryMsg, 'stdout');
+                            }
+                            setTimeout(attemptInstall, backoffMs);
+                        } else {
+                            const failMsg = 'Autonomy CLI auto-installation failed after maximum attempts. Please install manually.';
+                            console.error(failMsg);
+                            if (webviewProvider) {
+                                webviewProvider.sendAgentOutput(`❌ ${failMsg}`, 'stderr');
+                                webviewProvider.sendAgentOutput('Installation instructions: https://github.com/vadiminshakov/autonomy#installation', 'stderr');
+                            }
+                            vscode.window.showErrorMessage(failMsg, 'Open Instructions').then(selection => {
+                                if (selection === 'Open Instructions') {
+                                    vscode.env.openExternal(vscode.Uri.parse('https://github.com/vadiminshakov/autonomy#installation'));
+                                }
+                            });
+                            resolve(false);
+                        }
+                    } else {
+                        // Verify installation by checking if autonomy command works
+                        exec('autonomy --version', execOptions, (verifyError: any, verifyStdout: string) => {
+                            if (verifyError) {
+                                const verifyMsg = `Installation completed but verification failed: ${verifyError.message}`;
+                                console.error(verifyMsg);
+                                if (webviewProvider) {
+                                    webviewProvider.sendAgentOutput(`⚠️ ${verifyMsg}`, 'stderr');
+                                }
+                                
+                                if (attempt < maxAttempts) {
+                                    const retryMsg = `Retrying verification in ${backoffMs/1000} seconds...`;
+                                    console.log(retryMsg);
+                                    if (webviewProvider) {
+                                        webviewProvider.sendAgentOutput(retryMsg, 'stdout');
+                                    }
+                                    setTimeout(attemptInstall, backoffMs);
+                                } else {
+                                    resolve(false);
+                                }
+                            } else {
+                                const successMsg = `✅ Autonomy CLI installed successfully! Version: ${verifyStdout.trim()}`;
+                                console.log(successMsg);
+                                if (webviewProvider) {
+                                    webviewProvider.sendAgentOutput(successMsg, 'stdout');
+                                }
+                                vscode.window.showInformationMessage('Autonomy CLI installed successfully!');
+                                resolve(true);
                             }
                         });
-                        resolve(false);
-                    } else {
-                        // Verify installation
-                        const homePath = os.homedir();
-                        const binaryPath = path.join(homePath, '.local', 'bin', 'autonomy');
-                        
-                        if (!fs.existsSync(binaryPath)) {
-                            console.error('Binary not found after installation');
-                            
-                            if (attempt > 0) {
-                                console.log(`Binary verification failed, retrying... (${attempt} attempts left)`);
-                                setTimeout(() => attemptInstall(attempt - 1), 2000);
-                                return;
-                            }
-                            
-                            vscode.window.showErrorMessage('Installation completed but binary not found. Please install manually.');
-                            resolve(false);
-                            return;
-                        }
-                        
-                        console.log('Autonomy installed and verified successfully!');
-                        
-                        // Update global config to use local bin path
-                        const configPath = path.join(homePath, '.autonomy', 'config.json');
-                        try {
-                            let globalConfig: any = {};
-                            if (fs.existsSync(configPath)) {
-                                globalConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                            }
-                            globalConfig.executable_path = binaryPath;
-                            if (!fs.existsSync(path.dirname(configPath))) {
-                                fs.mkdirSync(path.dirname(configPath), { recursive: true });
-                            }
-                            fs.writeFileSync(configPath, JSON.stringify(globalConfig, null, 2));
-                        } catch (error) {
-                            console.error('Failed to update global config:', error);
-                        }
-                        
-                        vscode.window.showInformationMessage('Autonomy CLI installed successfully!');
-                        resolve(true);
                     }
                 });
             };
             
-            attemptInstall(retries - 1);
+            attemptInstall();
         });
     }
     

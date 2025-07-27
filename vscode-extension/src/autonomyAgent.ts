@@ -18,7 +18,7 @@ export class AutonomyAgent {
     private outputChannel: vscode.OutputChannel;
     private isRunningFlag = false;
     private currentTask: TaskItem | undefined;
-    private outputCallback?: (output: string, type: 'stdout' | 'stderr') => void;
+    private outputCallback?: (output: string, type: 'stdout' | 'stderr' | 'task_status') => void;
     private isWebviewMode = false;
 
     constructor(
@@ -28,7 +28,7 @@ export class AutonomyAgent {
         this.outputChannel = vscode.window.createOutputChannel('Autonomy Agent');
     }
 
-    setOutputCallback(callback: (output: string, type: 'stdout' | 'stderr') => void) {
+    setOutputCallback(callback: (output: string, type: 'stdout' | 'stderr' | 'task_status') => void) {
         this.outputCallback = callback;
     }
 
@@ -68,15 +68,21 @@ export class AutonomyAgent {
                 this.outputChannel.hide();
             }
 
+            const workingDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+            console.log(`autonomyAgent: Spawning process: ${this.config.executablePath} --headless`);
+            console.log(`autonomyAgent: Working directory: ${workingDir}`);
             this.process = spawn(this.config.executablePath, ['--headless'], {
-                cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd(),
+                cwd: workingDir,
                 stdio: ['pipe', 'pipe', 'pipe']
             });
 
+            console.log(`autonomyAgent: Process spawned, PID: ${this.process.pid}`);
             this.setupProcessHandlers();
             this.isRunningFlag = true;
+            console.log(`autonomyAgent: isRunningFlag set to true`);
 
             await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log(`autonomyAgent: After 1s wait, process exists: ${!!this.process}, killed: ${this.process?.killed}, isRunningFlag: ${this.isRunningFlag}`);
 
             if (!this.process || this.process.killed) {
                 throw new Error('Failed to start autonomy process');
@@ -91,17 +97,17 @@ export class AutonomyAgent {
     async stop(): Promise<void> {
         if (this.process && !this.process.killed) {
             this.process.kill('SIGTERM');
-            
+
             await new Promise(resolve => setTimeout(resolve, 2000));
-            
+
             if (!this.process.killed) {
                 this.process.kill('SIGKILL');
             }
         }
-        
+
         this.isRunningFlag = false;
         this.process = undefined;
-        
+
         if (!this.isWebviewMode) {
             this.outputChannel.appendLine('Autonomy agent stopped');
         }
@@ -121,9 +127,9 @@ export class AutonomyAgent {
             'running',
             vscode.TreeItemCollapsibleState.None
         );
-        
+
         this.taskProvider.addTask(this.currentTask);
-        
+
         if (!this.isWebviewMode) {
             this.outputChannel.appendLine(`\n--- Running task: ${taskDescription} ---`);
         }
@@ -131,7 +137,7 @@ export class AutonomyAgent {
         try {
             if (this.process && this.process.stdin) {
                 this.process.stdin.write(taskDescription + '\n');
-                
+
                 this.currentTask.status = 'running';
                 this.taskProvider.refresh();
             }
@@ -149,7 +155,7 @@ export class AutonomyAgent {
 
     private async validateExecutable(): Promise<void> {
         console.log(`autonomyAgent: Validating executable: ${this.config.executablePath}`);
-        
+
         return new Promise((resolve, reject) => {
             const testProcess = spawn(this.config.executablePath, ['--version'], {
                 stdio: 'pipe'
@@ -163,14 +169,14 @@ export class AutonomyAgent {
             testProcess.on('error', (error) => {
                 clearTimeout(timeout);
                 console.error(`autonomyAgent: Executable validation error:`, error);
-                
+
                 let errorMsg = `Cannot find autonomy executable at "${this.config.executablePath}". `;
                 if (error.message.includes('ENOENT')) {
                     errorMsg += 'Please install autonomy or configure the correct path in extension settings.';
                 } else {
                     errorMsg += `Error: ${error.message}`;
                 }
-                
+
                 reject(new Error(errorMsg));
             });
 
@@ -190,9 +196,9 @@ export class AutonomyAgent {
 
     private async createConfigFile(): Promise<void> {
         console.log('autonomyAgent: Checking for global config...');
-        
+
         const globalConfigPath = require('path').join(require('os').homedir(), '.autonomy', 'config.json');
-        
+
         if (require('fs').existsSync(globalConfigPath)) {
             console.log('autonomyAgent: Using global config from ~/.autonomy/config.json');
             if (!this.isWebviewMode) {
@@ -200,16 +206,16 @@ export class AutonomyAgent {
             }
             return;
         }
-        
+
         console.log('autonomyAgent: No global config found, creating local config...');
-        
+
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
             throw new Error('No workspace folder found');
         }
 
         const configPath = vscode.Uri.joinPath(workspaceFolder.uri, '.autonomy', 'config.json');
-        
+
         const config = {
             provider: this.config.provider,
             model: this.config.model,
@@ -226,7 +232,7 @@ export class AutonomyAgent {
 
             const configContent = JSON.stringify(config, null, 2);
             await vscode.workspace.fs.writeFile(configPath, Buffer.from(configContent, 'utf8'));
-            
+
             console.log(`autonomyAgent: Configuration written to ${configPath.fsPath}`);
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`Configuration written to ${configPath.fsPath}`);
@@ -244,13 +250,13 @@ export class AutonomyAgent {
 
         this.process.stdout?.on('data', (data: Buffer) => {
             const output = data.toString();
-            
+
             if (!this.isWebviewMode) {
                 this.outputChannel.append(output);
             }
-            
+
             this.parseOutput(output);
-            
+
             if (this.outputCallback) {
                 this.outputCallback(output, 'stdout');
             }
@@ -258,11 +264,18 @@ export class AutonomyAgent {
 
         this.process.stderr?.on('data', (data: Buffer) => {
             const error = data.toString();
-            
+
+            // Only log as error if it's an actual error, otherwise use info log
+            if (this.isActualError(error)) {
+                console.error(`autonomyAgent: stderr:`, error);
+            } else {
+                console.log(`autonomyAgent: info:`, error);
+            }
+
             if (!this.isWebviewMode) {
                 this.outputChannel.append(`ERROR: ${error}`);
             }
-            
+
             // Only send actual errors to chat, not info/debug logs
             if (this.outputCallback && this.isActualError(error)) {
                 this.outputCallback(`ERROR: ${error}`, 'stderr');
@@ -270,20 +283,22 @@ export class AutonomyAgent {
         });
 
         this.process.on('close', (code, signal) => {
+            console.log(`autonomyAgent: Process closed with code ${code}, signal ${signal}`);
             this.isRunningFlag = false;
-            
+
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`\nAutonomy process exited with code ${code}, signal ${signal}`);
             }
         });
 
         this.process.on('error', (error) => {
+            console.error(`autonomyAgent: Process error:`, error);
             this.isRunningFlag = false;
-            
+
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`Process error: ${error.message}`);
             }
-            
+
             if (this.currentTask && this.currentTask.status === 'running') {
                 this.currentTask.status = 'failed';
                 this.taskProvider.refresh();
@@ -293,29 +308,41 @@ export class AutonomyAgent {
 
     private parseOutput(output: string): void {
         const completionPatterns = [
-            /Task\s+completed\s+successfully\.?\s*$/i,
+            /Task\s+completed\s+successfully/i,
             /✅\s*Task\s+completed/i,
             /✅\s*All\s+done/i,
-            /^✅/m
+            /^✅/m,
+            /Done\s+attempt_completion/i,
+            /🎉\s*Task\s+completed/i
         ];
-        
+
         const failurePatterns = [
             /Task\s+failed/i,
             /❌\s*Task/i,
             /Error:\s+Task/i
         ];
-        
+
         const isTaskCompleted = completionPatterns.some(pattern => pattern.test(output));
         const isTaskFailed = failurePatterns.some(pattern => pattern.test(output));
-        
+
         if (isTaskCompleted && this.currentTask && this.currentTask.status === 'running') {
             this.currentTask.status = 'completed';
             this.taskProvider.refresh();
+            // Notify webview to hide thinking indicator on task completion
+            if (this.outputCallback) {
+                this.outputCallback('TASK_COMPLETED', 'task_status');
+            }
         } else if (isTaskFailed && this.currentTask && this.currentTask.status === 'running') {
             this.currentTask.status = 'failed';
             this.taskProvider.refresh();
+            // Notify webview to hide thinking indicator on task failure
+            if (this.outputCallback) {
+                this.outputCallback('TASK_FAILED', 'task_status');
+            }
         } else if (output.includes('Tool')) {
-            const toolMatch = output.match(/Tool (\w+)/);
+            // Clean output from special Unicode characters that might cause display issues
+            const cleanOutput = output.replace(/[\u00A0-\u9999<>\&]/gim, '').replace(/\uFFFD/g, '');
+            const toolMatch = cleanOutput.match(/Tool (\w+)/);
             if (toolMatch && this.currentTask) {
                 this.currentTask.tooltip = `Running tool: ${toolMatch[1]}`;
                 this.taskProvider.refresh();
@@ -325,21 +352,22 @@ export class AutonomyAgent {
 
     private isActualError(stderr: string): boolean {
         const lowerStderr = stderr.toLowerCase();
-        
+
         // Filter out info/debug logs that are not actual errors
         if (lowerStderr.includes('task iteration')) return false;
         if (lowerStderr.includes('=== task iteration')) return false;
+        if (lowerStderr.includes('ai requested tools')) return false;
         if (lowerStderr.includes('info:')) return false;
         if (lowerStderr.includes('debug:')) return false;
         if (lowerStderr.includes('log:')) return false;
-        
+
         // Only show actual errors, warnings, and failures
-        return lowerStderr.includes('error:') || 
-               lowerStderr.includes('failed') || 
-               lowerStderr.includes('panic') || 
-               lowerStderr.includes('fatal') ||
-               lowerStderr.includes('warning:') ||
-               lowerStderr.includes('warn:');
+        return lowerStderr.includes('error:') ||
+            lowerStderr.includes('failed') ||
+            lowerStderr.includes('panic') ||
+            lowerStderr.includes('fatal') ||
+            lowerStderr.includes('warning:') ||
+            lowerStderr.includes('warn:');
     }
 
     getOutputChannel(): vscode.OutputChannel {

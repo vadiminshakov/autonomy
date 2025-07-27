@@ -77,7 +77,15 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public sendAgentOutput(output: string, type: 'stdout' | 'stderr') {
+    public sendAgentOutput(output: string, type: 'stdout' | 'stderr' | 'task_status') {
+        // Handle special task status messages
+        if (type === 'task_status') {
+            if (output === 'TASK_COMPLETED' || output === 'TASK_FAILED') {
+                this.hideThinkingIndicator();
+            }
+            return;
+        }
+        
         // Send output immediately without buffering
         if (output.trim()) {
             const filteredOutput = this.filterOutput(output);
@@ -91,12 +99,28 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 this.addToHistory(messageType, filteredOutput);
                 this.sendMessage(messageType, filteredOutput);
                 
-                // Show thinking indicator after agent messages
-                if (messageType === 'agent') {
+                // Show thinking indicator after agent messages, but only if task is still running
+                if (messageType === 'agent' && !this.isTaskCompletionMessage(filteredOutput)) {
                     this.showThinkingIndicator();
                 }
             }
         }
+    }
+
+    private isTaskCompletionMessage(output: string): boolean {
+        const completionPatterns = [
+            /Task\s+completed\s+successfully/i,
+            /✅\s*Task\s+completed/i,
+            /✅\s*All\s+done/i,
+            /^✅/m,
+            /Done\s+attempt_completion/i,
+            /🎉\s*Task\s+completed/i,
+            /Task\s+failed/i,
+            /❌\s*Task/i,
+            /Error:\s+Task/i
+        ];
+        
+        return completionPatterns.some(pattern => pattern.test(output));
     }
 
 
@@ -127,7 +151,24 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             this.sendMessage('system', 'Starting Autonomy agent...');
             await vscode.commands.executeCommand('autonomy.start', true);
             
-            this.sendMessage('system', 'Autonomy agent is ready! You can now send tasks.');
+            // Wait for agent to be fully running
+            let attempts = 0;
+            while (attempts < 10 && (!this.autonomyAgent || !this.autonomyAgent.isRunning())) {
+                console.log(`webviewProvider: Waiting for agent, attempt ${attempts + 1}, agent exists: ${!!this.autonomyAgent}, running: ${this.autonomyAgent?.isRunning()}`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                attempts++;
+            }
+            
+            console.log(`webviewProvider: After waiting, agent exists: ${!!this.autonomyAgent}, running: ${this.autonomyAgent?.isRunning()}`);
+            
+            if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
+                this.sendMessage('system', 'Autonomy agent is ready! You can now send tasks.');
+                this.updateWebviewState();
+            } else {
+                // Force update anyway in case the agent is actually running
+                this.updateWebviewState();
+                this.sendMessage('system', 'Agent may be ready. If input is still disabled, please check the console or restart.');
+            }
             
         } catch (error) {
             console.error('webviewProvider: Error auto-starting agent:', error);
@@ -140,6 +181,10 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         let filtered = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
         filtered = filtered.replace(/\r[^\n]/g, '');
         filtered = filtered.replace(/\r/g, '');
+        
+        // Remove replacement character (�) and other problematic Unicode characters
+        filtered = filtered.replace(/\uFFFD/g, '');  // Remove � character
+        filtered = filtered.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''); // Remove control characters
         
         // Filter out thinking text and repetitive messages
         const lines = filtered.split('\n');
@@ -396,6 +441,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                                 <option value="openai">OpenAI</option>
                                 <option value="anthropic">Anthropic</option>
                                 <option value="openrouter">OpenRouter</option>
+                                <option value="local">Local</option>
                             </select>
                         </div>
 

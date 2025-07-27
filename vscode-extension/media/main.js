@@ -11,6 +11,8 @@ let saveConfigBtn, loadConfigBtn;
 
 let agentRunning = false;
 let currentTab = 'chat';
+let originalConfig = {}; // Store original config to track changes
+let configChanged = false;
 
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -74,14 +76,24 @@ function setupEventListeners() {
     loadConfigBtn.addEventListener('click', loadConfig);
 
     
-    providerSelect.addEventListener('change', onProviderChange);
+    providerSelect.addEventListener('change', function() {
+        onProviderChange();
+        checkConfigChanges();
+    });
     
     
     modelSelect.addEventListener('change', function() {
         if (this.value) {
             modelInput.value = this.value;
         }
+        checkConfigChanges();
     });
+    
+    // Add change listeners to all config inputs
+    apiKeyInput.addEventListener('input', checkConfigChanges);
+    modelInput.addEventListener('input', checkConfigChanges);
+    executablePathInput.addEventListener('input', checkConfigChanges);
+    baseUrlInput.addEventListener('input', checkConfigChanges);
     
     toggleModelInputBtn.addEventListener('click', toggleModelInput);
 }
@@ -221,6 +233,12 @@ function showTab(tabName) {
 }
 
 function saveConfig() {
+    // Add pressed animation
+    saveConfigBtn.classList.add('btn-pressed');
+    setTimeout(() => {
+        saveConfigBtn.classList.remove('btn-pressed');
+    }, 150);
+    
     const config = {
         provider: providerSelect.value,
         apiKey: apiKeyInput.value,
@@ -249,11 +267,23 @@ function populateConfigForm(config) {
     executablePathInput.value = config.executablePath || 'autonomy';
     baseUrlInput.value = config.baseURL || '';
 
+    // Store original config for change detection
+    originalConfig = {
+        provider: config.provider || 'openai',
+        apiKey: config.hasApiKey ? '••••••••••••••••' : '',
+        model: config.model || '',
+        executablePath: config.executablePath || 'autonomy',
+        baseURL: config.baseURL || ''
+    };
     
     onProviderChange();
     
     setLoading(loadConfigBtn, false);
     setLoading(saveConfigBtn, false);
+    
+    // Reset config changed state and update button
+    configChanged = false;
+    updateSaveButtonState();
 }
 
 function onProviderChange() {
@@ -282,6 +312,11 @@ function updateModelOptions(provider) {
             placeholder: 'e.g., google/gemini-2.5-pro, x-ai/grok-4',
             default: 'google/gemini-2.5-pro',
             models: ['google/gemini-2.5-pro', 'x-ai/grok-4', 'moonshotai/kimi-k2', 'qwen/qwen3-coder', 'deepseek/deepseek-chat-v3-0324']
+        },
+        'local': {
+            placeholder: 'e.g., deepseek-coder-v2:16b',
+            default: 'deepseek-coder-v2:16b',
+            models: ['deepseek-coder-v2:16b', 'llama4', 'llama3.2:latest', 'qwen2.5-coder:7b-instruct', ]
         }
     };
     
@@ -319,7 +354,8 @@ function updateBaseUrl(provider) {
     const baseUrls = {
         'openai': 'https://api.openai.com/v1',
         'anthropic': 'https://api.anthropic.com',
-        'openrouter': 'https://openrouter.ai/api/v1'
+        'openrouter': 'https://openrouter.ai/api/v1',
+        'local': 'http://localhost:11434/v1'
     };
     
     
@@ -377,6 +413,17 @@ window.addEventListener('message', event => {
         
         case 'configSaved':
             setLoading(saveConfigBtn, false);
+            // Reset config changed state after successful save
+            configChanged = false;
+            updateSaveButtonState();
+            // Update original config with current values
+            originalConfig = {
+                provider: providerSelect.value,
+                apiKey: apiKeyInput.value,
+                model: modelInput.value,
+                executablePath: executablePathInput.value,
+                baseURL: baseUrlInput.value
+            };
             break;
         
         case 'addThinking':
@@ -389,5 +436,30 @@ window.addEventListener('message', event => {
     }
 });
 
+
+// Check if config has changed
+function checkConfigChanges() {
+    const currentConfig = {
+        provider: providerSelect.value,
+        apiKey: apiKeyInput.value,
+        model: modelInput.value,
+        executablePath: executablePathInput.value,
+        baseURL: baseUrlInput.value
+    };
+    
+    configChanged = JSON.stringify(currentConfig) !== JSON.stringify(originalConfig);
+    updateSaveButtonState();
+}
+
+// Update save button state based on config changes
+function updateSaveButtonState() {
+    if (configChanged) {
+        saveConfigBtn.classList.remove('btn-save-disabled');
+        saveConfigBtn.disabled = false;
+    } else {
+        saveConfigBtn.classList.add('btn-save-disabled');
+        saveConfigBtn.disabled = true;
+    }
+}
 
 window.showTab = showTab;
