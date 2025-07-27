@@ -10,6 +10,7 @@ BINARY_NAME="autonomy"
 INSTALL_DIR="$HOME/.local/bin"
 REPO_URL="https://github.com/vadiminshakov/autonomy"
 GITHUB_API_URL="https://api.github.com/repos/vadiminshakov/autonomy"
+TEMP_DIR=""
 
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -306,11 +307,16 @@ check_permissions() {
 install_binary() {
     print_status "installing binary to $INSTALL_DIR..."
     
+    if [[ ! -f "$BINARY_NAME" ]]; then
+        print_error "binary file $BINARY_NAME not found in temporary directory"
+        exit 1
+    fi
+    
     if [[ "$USE_SUDO" == true ]]; then
-        sudo mv "$BINARY_NAME" "$INSTALL_DIR/"
+        sudo cp "$BINARY_NAME" "$INSTALL_DIR/"
         sudo chmod +x "$INSTALL_DIR/$BINARY_NAME"
     else
-        mv "$BINARY_NAME" "$INSTALL_DIR/"
+        cp "$BINARY_NAME" "$INSTALL_DIR/"
         chmod +x "$INSTALL_DIR/$BINARY_NAME"
     fi
     
@@ -338,7 +344,14 @@ verify_installation() {
 }
 
 cleanup() {
-    rm -f "$BINARY_NAME" autonomy-*.tar.gz autonomy-*.zip autonomy.exe
+    if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+        print_status "cleaning up temporary directory..."
+        cd /
+        rm -rf "$TEMP_DIR"
+    else
+        # Fallback cleanup in current directory
+        rm -f "$BINARY_NAME" autonomy-*.tar.gz autonomy-*.zip autonomy.exe
+    fi
 }
 
 show_usage() {
@@ -385,6 +398,19 @@ main() {
     done
 
     print_status "starting installation of $BINARY_NAME..."
+    
+    # Create a temporary working directory for downloads
+    TEMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'autonomy-install')
+    if [[ ! -d "$TEMP_DIR" ]]; then
+        print_error "failed to create temporary directory"
+        exit 1
+    fi
+    
+    print_status "using temporary directory: $TEMP_DIR"
+    cd "$TEMP_DIR" || {
+        print_error "failed to change to temporary directory"
+        exit 1
+    }
     
     # create install directory if it doesn't exist
     if [[ ! -d "$INSTALL_DIR" ]]; then
