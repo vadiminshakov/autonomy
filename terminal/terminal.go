@@ -21,6 +21,8 @@ func newAIClient(cfg config.Config) (task.AIClient, error) {
 		return ai.NewAnthropic(cfg)
 	case "openrouter":
 		return ai.NewOpenai(cfg)
+	case "local":
+		return ai.NewOpenai(cfg)
 	default:
 		return nil, fmt.Errorf("unknown provider %s in config", cfg.Provider)
 	}

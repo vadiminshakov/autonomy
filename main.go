@@ -49,6 +49,8 @@ func main() {
 
 	case "openrouter":
 		client, err = ai.NewOpenai(cfg)
+	case "local":
+		client, err = ai.NewOpenai(cfg)
 	default:
 		log.Fatalf("unknown provider %s in config", cfg.Provider)
 	}
