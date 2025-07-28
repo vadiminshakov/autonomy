@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/vadiminshakov/autonomy/core/entity"
 	"github.com/vadiminshakov/autonomy/core/types"
 	"github.com/vadiminshakov/autonomy/mocks"
+
+	"github.com/golang/mock/gomock"
 )
 
 func TestReflectionEngine_EvaluateCompletion_Success(t *testing.T) {
