@@ -58,13 +58,27 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     case 'newTask':
                         this.handleNewTask();
                         break;
+                    case 'loadHistory':
+                        this.loadAndDisplayMessages();
+                        break;
                 }
             },
             undefined,
         );
 
         this.updateWebviewState();
-        this.loadAndDisplayMessages();
+        
+        // Load and display messages after a short delay to ensure webview is ready
+        setTimeout(() => {
+            this.loadAndDisplayMessages();
+        }, 100);
+
+        // Also try again after a longer delay in case the first attempt was too early
+        setTimeout(() => {
+            if (this.messageHistory.length > 0) {
+                this.loadAndDisplayMessages();
+            }
+        }, 1000);
         
         if (this.autoStartEnabled) {
             this.autoStartAgent();
@@ -150,7 +164,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            console.log('webviewProvider: Auto-starting agent...');
             this.sendMessage('system', 'Checking Autonomy installation...');
             
             // First try to run install check command to ensure Autonomy is installed
@@ -159,7 +172,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 // Wait a bit for installation to complete
                 await new Promise(resolve => setTimeout(resolve, 2000));
             } catch (installError) {
-                console.log('webviewProvider: Install check failed, continuing with agent start...');
+                // Continue with agent start
             }
             
             this.sendMessage('system', 'Starting Autonomy agent...');
@@ -168,12 +181,9 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             // Wait for agent to be fully running
             let attempts = 0;
             while (attempts < 10 && (!this.autonomyAgent || !this.autonomyAgent.isRunning())) {
-                console.log(`webviewProvider: Waiting for agent, attempt ${attempts + 1}, agent exists: ${!!this.autonomyAgent}, running: ${this.autonomyAgent?.isRunning()}`);
                 await new Promise(resolve => setTimeout(resolve, 500));
                 attempts++;
             }
-            
-            console.log(`webviewProvider: After waiting, agent exists: ${!!this.autonomyAgent}, running: ${this.autonomyAgent?.isRunning()}`);
             
             if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
                 this.sendMessage('system', 'Autonomy agent is ready! You can now send tasks.');
@@ -253,10 +263,10 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     ...msg,
                     timestamp: new Date(msg.timestamp)
                 }));
-                console.log('webviewProvider: Loaded', this.messageHistory.length, 'messages from file');
+            } else {
+                this.messageHistory = [];
             }
         } catch (error) {
-            console.error('webviewProvider: Error loading messages:', error);
             this.messageHistory = [];
         }
     }
@@ -270,9 +280,8 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             
             const data = JSON.stringify(this.messageHistory, null, 2);
             fs.writeFileSync(this.messagesFilePath, data, 'utf8');
-            console.log('webviewProvider: Saved', this.messageHistory.length, 'messages to file');
         } catch (error) {
-            console.error('webviewProvider: Error saving messages:', error);
+            // Silently handle errors
         }
     }
 
@@ -280,17 +289,20 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         try {
             if (fs.existsSync(this.messagesFilePath)) {
                 fs.unlinkSync(this.messagesFilePath);
-                console.log('webviewProvider: Deleted messages file');
             }
         } catch (error) {
-            console.error('webviewProvider: Error deleting messages file:', error);
+            // Silently handle errors
         }
     }
 
     private loadAndDisplayMessages() {
+        if (!this._view) {
+            return;
+        }
+        
         // Display all loaded messages in the webview
         for (const message of this.messageHistory) {
-            this._view?.webview.postMessage({
+            this._view.webview.postMessage({
                 type: 'addMessage',
                 message: {
                     type: message.type,
@@ -326,58 +338,44 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleConfigure(config: any) {
-        console.log('webviewProvider: handleConfigure called with config:', config);
-        
         try {
             // Read current global config or create new one
             const currentConfig = this.configManager.readGlobalConfig() || {};
-            console.log('webviewProvider: Current global config:', currentConfig);
             
             // Update config with new values
             if (config.provider) {
-                console.log('webviewProvider: Updating provider to:', config.provider);
                 currentConfig.provider = config.provider;
             }
             if (config.apiKey) {
-                console.log('webviewProvider: Updating API key (masked)');
                 currentConfig.api_key = config.apiKey;
             }
             if (config.model) {
-                console.log('webviewProvider: Updating model to:', config.model);
                 currentConfig.model = config.model;
             }
             if (config.executablePath) {
-                console.log('webviewProvider: Updating executable path to:', config.executablePath);
                 currentConfig.executable_path = config.executablePath;
             }
             if (config.baseURL) {
-                console.log('webviewProvider: Updating base URL to:', config.baseURL);
                 currentConfig.base_url = config.baseURL;
             }
 
-            console.log('webviewProvider: Final config to write:', currentConfig);
-
             // Write to global config
             await this.configManager.writeGlobalConfig(currentConfig);
-            console.log('webviewProvider: Global config written successfully');
 
             this.sendMessage('system', 'Configuration saved successfully. Restarting Autonomy with new settings...');
             
             // Restart autonomy agent with new configuration
             try {
                 if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
-                    console.log('webviewProvider: Stopping current agent for restart...');
                     await this.autonomyAgent.stop();
                     this.clearMessagesFile(); // Clear messages when restarting
                 }
                 
                 // Trigger restart via command - this will use the updated config
-                console.log('webviewProvider: Starting agent with new configuration...');
                 await vscode.commands.executeCommand('autonomy.start', true);
                 
                 this.sendMessage('system', 'Autonomy agent restarted successfully with new configuration!');
             } catch (restartError) {
-                console.error('webviewProvider: Error restarting agent:', restartError);
                 this.sendMessage('system', `Configuration saved but failed to restart agent: ${restartError}. Please restart manually.`);
             }
             
@@ -387,7 +385,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 type: 'configSaved'
             });
         } catch (error) {
-            console.error('webviewProvider: Error in handleConfigure:', error);
             this.sendMessage('system', `Failed to save configuration: ${error}`);
             
             this._view?.webview.postMessage({
@@ -399,13 +396,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private handleGetConfig() {
         try {
             const config = this.configManager.getConfiguration();
-            console.log('webviewProvider: Loaded config from global file:', {
-                provider: config.provider,
-                model: config.model,
-                hasApiKey: !!config.apiKey,
-                baseURL: config.baseURL,
-                executablePath: config.executablePath
-            });
             
             this._view?.webview.postMessage({
                 type: 'configData',
@@ -420,11 +410,8 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     enableReflection: config.enableReflection
                 }
             });
-            
-            console.log('webviewProvider: Sent config to webview with baseURL:', config.baseURL);
         } catch (error) {
             // If no global config exists, send empty config
-            console.log('webviewProvider: No global config found, sending default config. Error:', error);
             this._view?.webview.postMessage({
                 type: 'configData',
                 config: {
@@ -482,7 +469,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
     private updateWebviewState() {
         const isRunning = this.autonomyAgent?.isRunning() || false;
-        console.log('webviewProvider: Updating webview state, agent running:', isRunning);
         
         this._view?.webview.postMessage({
             type: 'updateState',
@@ -509,10 +495,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 <!-- Header -->
                 <div class="header">
                     <h2><img src="${webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'icon.png'))}" class="header-icon" alt="Autonomy"> Autonomy Agent</h2>
-                    <div class="status">
-                        <span id="status-indicator" class="status-dot offline"></span>
-                        <span id="status-text">Offline</span>
-                    </div>
                 </div>
 
                 <!-- Tabs -->
