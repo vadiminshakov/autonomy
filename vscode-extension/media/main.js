@@ -2,7 +2,7 @@
 const vscode = acquireVsCodeApi();
 
 
-let clearHistoryBtn, sendButton;
+let clearHistoryBtn, newTaskBtn, sendButton;
 let messageInput, messagesContainer;
 let statusIndicator, statusText;
 let configForm, providerSelect, apiKeyInput, modelInput, modelSelect, toggleModelInputBtn, executablePathInput, baseUrlInput;
@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeElements() {
     
     clearHistoryBtn = document.getElementById('clear-history');
+    newTaskBtn = document.getElementById('new-task');
     sendButton = document.getElementById('send-button');
     messageInput = document.getElementById('message-input');
     messagesContainer = document.getElementById('messages');
@@ -54,6 +55,10 @@ function setupEventListeners() {
     
     clearHistoryBtn.addEventListener('click', () => {
         vscode.postMessage({ type: 'clearHistory' });
+    });
+
+    newTaskBtn.addEventListener('click', () => {
+        vscode.postMessage({ type: 'newTask' });
     });
 
     

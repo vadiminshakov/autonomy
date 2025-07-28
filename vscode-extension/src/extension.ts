@@ -113,6 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
             autonomyAgent = undefined;
             
             webviewProvider.setAutonomyAgent(undefined);
+            webviewProvider.onAgentStopped(); // Clear messages file
             
             vscode.commands.executeCommand('setContext', 'autonomy:active', false);
             vscode.window.showInformationMessage('Autonomy agent stopped');
@@ -149,6 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
         console.log('Global config changed, restarting autonomy agent...');
         if (autonomyAgent && autonomyAgent.isRunning()) {
             await autonomyAgent.stop();
+            webviewProvider.onAgentStopped(); // Clear messages file
             try {
                 const config = configManager.getConfiguration();
                 autonomyAgent = new AutonomyAgent(config, taskProvider);

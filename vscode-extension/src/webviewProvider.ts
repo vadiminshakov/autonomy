@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { AutonomyAgent, AutonomyConfig } from './autonomyAgent';
 import { ConfigurationManager } from './configManager';
 
@@ -10,12 +13,15 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private messageHistory: Array<{type: 'user' | 'agent' | 'system', content: string, timestamp: Date}> = [];
     private autoStartEnabled = false;
     private thinkingMessageId: string | null = null;
+    private messagesFilePath: string;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
         configManager: ConfigurationManager
     ) {
         this.configManager = configManager;
+        this.messagesFilePath = path.join(os.homedir(), '.autonomy', 'task_messages.json');
+        this.loadMessages();
     }
 
     public resolveWebviewView(
@@ -49,12 +55,16 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     case 'clearHistory':
                         this.handleClearHistory();
                         break;
+                    case 'newTask':
+                        this.handleNewTask();
+                        break;
                 }
             },
             undefined,
         );
 
         this.updateWebviewState();
+        this.loadAndDisplayMessages();
         
         if (this.autoStartEnabled) {
             this.autoStartAgent();
@@ -75,6 +85,10 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         if (this._view) {
             this.autoStartAgent();
         }
+    }
+
+    public onAgentStopped() {
+        this.clearMessagesFile();
     }
 
     public sendAgentOutput(output: string, type: 'stdout' | 'stderr' | 'task_status') {
@@ -230,7 +244,70 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    private loadMessages() {
+        try {
+            if (fs.existsSync(this.messagesFilePath)) {
+                const data = fs.readFileSync(this.messagesFilePath, 'utf8');
+                const messages = JSON.parse(data);
+                this.messageHistory = messages.map((msg: any) => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                }));
+                console.log('webviewProvider: Loaded', this.messageHistory.length, 'messages from file');
+            }
+        } catch (error) {
+            console.error('webviewProvider: Error loading messages:', error);
+            this.messageHistory = [];
+        }
+    }
+
+    private saveMessages() {
+        try {
+            const autonomyDir = path.dirname(this.messagesFilePath);
+            if (!fs.existsSync(autonomyDir)) {
+                fs.mkdirSync(autonomyDir, { recursive: true });
+            }
+            
+            const data = JSON.stringify(this.messageHistory, null, 2);
+            fs.writeFileSync(this.messagesFilePath, data, 'utf8');
+            console.log('webviewProvider: Saved', this.messageHistory.length, 'messages to file');
+        } catch (error) {
+            console.error('webviewProvider: Error saving messages:', error);
+        }
+    }
+
+    private clearMessagesFile() {
+        try {
+            if (fs.existsSync(this.messagesFilePath)) {
+                fs.unlinkSync(this.messagesFilePath);
+                console.log('webviewProvider: Deleted messages file');
+            }
+        } catch (error) {
+            console.error('webviewProvider: Error deleting messages file:', error);
+        }
+    }
+
+    private loadAndDisplayMessages() {
+        // Display all loaded messages in the webview
+        for (const message of this.messageHistory) {
+            this._view?.webview.postMessage({
+                type: 'addMessage',
+                message: {
+                    type: message.type,
+                    content: message.content,
+                    timestamp: message.timestamp.toISOString()
+                }
+            });
+        }
+    }
+
     private async handleSendMessage(message: string) {
+        // Handle /clear command
+        if (message.trim() === '/clear') {
+            this.handleClearHistory();
+            return;
+        }
+
         this.addToHistory('user', message);
         this.sendMessage('user', message);
 
@@ -284,7 +361,26 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             await this.configManager.writeGlobalConfig(currentConfig);
             console.log('webviewProvider: Global config written successfully');
 
-            this.sendMessage('system', 'Configuration saved successfully to ~/.autonomy/config.json');
+            this.sendMessage('system', 'Configuration saved successfully. Restarting Autonomy with new settings...');
+            
+            // Restart autonomy agent with new configuration
+            try {
+                if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
+                    console.log('webviewProvider: Stopping current agent for restart...');
+                    await this.autonomyAgent.stop();
+                    this.clearMessagesFile(); // Clear messages when restarting
+                }
+                
+                // Trigger restart via command - this will use the updated config
+                console.log('webviewProvider: Starting agent with new configuration...');
+                await vscode.commands.executeCommand('autonomy.start', true);
+                
+                this.sendMessage('system', 'Autonomy agent restarted successfully with new configuration!');
+            } catch (restartError) {
+                console.error('webviewProvider: Error restarting agent:', restartError);
+                this.sendMessage('system', `Configuration saved but failed to restart agent: ${restartError}. Please restart manually.`);
+            }
+            
             this.updateWebviewState();
             
             this._view?.webview.postMessage({
@@ -347,9 +443,15 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
     private handleClearHistory() {
         this.messageHistory = [];
+        this.clearMessagesFile();
         this._view?.webview.postMessage({
             type: 'clearMessages'
         });
+    }
+
+    private handleNewTask() {
+        this.handleClearHistory();
+        this.sendMessage('system', 'Starting new task. Previous conversation cleared.');
     }
 
     private addToHistory(type: 'user' | 'agent' | 'system', content: string) {
@@ -362,6 +464,9 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         if (this.messageHistory.length > 100) {
             this.messageHistory = this.messageHistory.slice(-100);
         }
+
+        // Save messages to file after each addition
+        this.saveMessages();
     }
 
     private sendMessage(type: 'user' | 'agent' | 'system', content: string) {
@@ -419,6 +524,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 <!-- Chat Tab -->
                 <div id="chat-tab" class="tab-content active">
                     <div class="agent-controls">
+                        <button id="new-task" class="btn btn-primary">New Task</button>
                         <button id="clear-history" class="btn btn-tertiary">Clear History</button>
                     </div>
 
