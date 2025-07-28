@@ -79,8 +79,6 @@ func RunTerminal(client task.AIClient) error {
 
 // RunHeadless runs the terminal in headless mode for VS Code extension integration
 func RunHeadless(client task.AIClient) error {
-	fmt.Printf("Autonomy started in headless mode\n")
-	fmt.Printf("Ready to receive tasks...\n")
 
 	scanner := bufio.NewScanner(os.Stdin)
 

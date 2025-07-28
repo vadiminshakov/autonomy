@@ -4,7 +4,6 @@ const vscode = acquireVsCodeApi();
 
 let clearHistoryBtn, newTaskBtn, sendButton;
 let messageInput, messagesContainer;
-let statusIndicator, statusText;
 let configForm, providerSelect, apiKeyInput, modelInput, modelSelect, toggleModelInputBtn, executablePathInput, baseUrlInput;
 let saveConfigBtn, loadConfigBtn;
 
@@ -20,13 +19,13 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     loadConfig();
     
-    
-    console.log('webview JS: DOM loaded, setting initial state');
     if (sendButton && messageInput) {
         sendButton.disabled = false;
         messageInput.disabled = false;
-        console.log('webview JS: Input field enabled on load');
     }
+    
+    // Request to load message history
+    vscode.postMessage({ type: 'loadHistory' });
 });
 
 function initializeElements() {
@@ -36,8 +35,6 @@ function initializeElements() {
     sendButton = document.getElementById('send-button');
     messageInput = document.getElementById('message-input');
     messagesContainer = document.getElementById('messages');
-    statusIndicator = document.getElementById('status-indicator');
-    statusText = document.getElementById('status-text');
 
     
     providerSelect = document.getElementById('provider');
@@ -118,6 +115,10 @@ function sendMessage() {
 }
 
 function addMessage(type, content, timestamp = null) {
+    if (!messagesContainer) {
+        return;
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
     
@@ -176,24 +177,16 @@ function clearMessages() {
 }
 
 function updateAgentStatus(running) {
-    console.log('webview JS: Updating agent status to:', running);
     agentRunning = running;
     
     if (running) {
-        statusIndicator.className = 'status-dot online';
-        statusText.textContent = 'Online';
         sendButton.disabled = false;
         messageInput.disabled = false;
-        console.log('webview JS: Input field enabled');
     } else {
-        statusIndicator.className = 'status-dot offline';
-        statusText.textContent = 'Offline';
         sendButton.disabled = true;
         messageInput.disabled = true;
-        console.log('webview JS: Input field disabled');
     }
 
-    
     setLoading(sendButton, false);
 }
 
@@ -267,7 +260,7 @@ function loadConfig() {
 
 function populateConfigForm(config) {
     providerSelect.value = config.provider || 'openai';
-    apiKeyInput.value = config.hasApiKey ? '••••••••••••••••' : '';
+    apiKeyInput.value = config.apiKey || '';
     modelInput.value = config.model || '';
     executablePathInput.value = config.executablePath || 'autonomy';
     baseUrlInput.value = config.baseURL || '';
@@ -275,7 +268,7 @@ function populateConfigForm(config) {
     // Store original config for change detection
     originalConfig = {
         provider: config.provider || 'openai',
-        apiKey: config.hasApiKey ? '••••••••••••••••' : '',
+        apiKey: config.apiKey || '',
         model: config.model || '',
         executablePath: config.executablePath || 'autonomy',
         baseURL: config.baseURL || ''

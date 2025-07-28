@@ -261,7 +261,6 @@ func (im *IndexManager) StartAutoRebuild() {
 	im.autoRebuild = true
 
 	go im.periodicRebuild()
-	ui.ShowIndexStatus("Index auto-rebuild started with 20-minute interval")
 }
 
 func (im *IndexManager) StopAutoRebuild() {

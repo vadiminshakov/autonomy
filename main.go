@@ -39,8 +39,6 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Using provider: %s\n", cfg.Provider)
-
 	switch cfg.Provider {
 	case "openai":
 		client, err = ai.NewOpenai(cfg)
