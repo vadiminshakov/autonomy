@@ -19,7 +19,7 @@ One of the key goals of this project is to support local models, providing devel
 ## Install as terminal agent
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | bash
 ```
 
 Or with Go:
