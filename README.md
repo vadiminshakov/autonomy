@@ -16,13 +16,15 @@ One of the key goals of this project is to support local models, providing devel
 
 [VSCode extension](https://marketplace.visualstudio.com/items?itemName=Autonomy.autonomy-vscode)
 
-## Install as terminal agent
+## Other options
+ 
+### Install as terminal agent
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/vadiminshakov/autonomy/main/install.sh | bash
 ```
 
-Or with Go:
+### Or with Go:
 
 ```bash
 go install github.com/vadiminshakov/autonomy@latest
