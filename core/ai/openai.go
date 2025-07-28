@@ -85,7 +85,7 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		model = "o3"
 	}
 
-	// определяем последнее сообщение пользователя для анализа
+	// determine the last user message for analysis
 	var lastUserMessage string
 	for i := len(promptData.Messages) - 1; i >= 0; i-- {
 		if promptData.Messages[i].Role == "user" && promptData.Messages[i].Content != "" {
@@ -290,7 +290,7 @@ func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*e
 	}, nil
 }
 
-// convertToOpenAIToolChoice конвертирует общий режим выбора инструментов в формат OpenAI
+// convertToOpenAIToolChoice converts general tool choice mode to OpenAI format
 func convertToOpenAIToolChoice(mode ToolChoiceMode) string {
 	switch mode {
 	case ToolChoiceModeAuto:

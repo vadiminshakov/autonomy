@@ -157,7 +157,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 	}, nil
 }
 
-// convertToAnthropicToolChoice конвертирует общий режим выбора инструментов в формат Anthropic
+// convertToAnthropicToolChoice converts general tool choice mode to Anthropic format
 func convertToAnthropicToolChoice(mode ToolChoiceMode) anthropic.ToolChoiceUnionParam {
 	switch mode {
 	case ToolChoiceModeAuto:

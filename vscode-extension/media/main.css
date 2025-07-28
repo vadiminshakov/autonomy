@@ -1,107 +1,123 @@
-/* VS Code color variables */
+/* Minimal Pixel Art Material Design Theme */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
 :root {
-    --vscode-foreground: var(--vscode-foreground);
-    --vscode-background: var(--vscode-editor-background);
-    --vscode-input-background: var(--vscode-input-background);
-    --vscode-input-foreground: var(--vscode-input-foreground);
-    --vscode-input-border: var(--vscode-input-border);
-    --vscode-button-background: var(--vscode-button-background);
-    --vscode-button-foreground: var(--vscode-button-foreground);
-    --vscode-button-hoverBackground: var(--vscode-button-hoverBackground);
-    --vscode-list-hoverBackground: var(--vscode-list-hoverBackground);
-    --vscode-scrollbarSlider-background: var(--vscode-scrollbarSlider-background);
+    /* Material Design inspired pixel palette */
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --surface-primary: #30363d;
+    --surface-secondary: #21262d;
+    
+    /* Accent colors */
+    --accent-primary: #58a6ff;
+    --accent-secondary: #7c3aec;
+    --accent-success: #3fb950;
+    --accent-warning: #d29922;
+    --accent-error: #f85149;
+    
+    /* Text colors */
+    --text-primary: #f0f6fc;
+    --text-secondary: #8b949e;
+    --text-muted: #656d76;
+    
+    /* Borders */
+    --border-default: #30363d;
+    --border-muted: #21262d;
+    --border-accent: var(--accent-primary);
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
 
 body {
-    font-family: var(--vscode-font-family);
-    font-size: var(--vscode-font-size);
-    color: var(--vscode-foreground);
-    background-color: var(--vscode-background);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-primary);
+    background: var(--bg-primary);
     margin: 0;
     padding: 0;
     overflow: hidden;
+    letter-spacing: -0.01em;
 }
 
 .container {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: 12px;
+    padding: 16px;
+    gap: 16px;
     box-sizing: border-box;
+    overflow: hidden;
 }
 
-/* Header */
+/* Minimal header */
 .header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--vscode-panel-border);
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
 }
 
 .header h2 {
     margin: 0;
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
 }
 
 .header-icon {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
+    opacity: 0.9;
+    filter: brightness(1.1);
+}
+
+/* Clean tabs */
+.tabs {
+    display: flex;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 4px;
+    gap: 2px;
     flex-shrink: 0;
 }
 
-.status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--vscode-charts-red);
-}
-
-.status-dot.online {
-    background-color: var(--vscode-charts-green);
-}
-
-.status-dot.offline {
-    background-color: var(--vscode-charts-red);
-}
-
-/* Tabs */
-.tabs {
-    display: flex;
-    margin-bottom: 16px;
-    border-bottom: 1px solid var(--vscode-panel-border);
-}
-
 .tab-button {
+    flex: 1;
     background: transparent;
     border: none;
-    color: var(--vscode-foreground);
+    color: var(--text-secondary);
     padding: 8px 16px;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-    font-size: 13px;
-    transition: all 0.2s ease;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 400;
+    border-radius: 4px;
+    transition: all 0.15s ease;
 }
 
 .tab-button:hover {
-    background-color: var(--vscode-list-hoverBackground);
+    background: var(--surface-primary);
+    color: var(--text-primary);
 }
 
 .tab-button.active {
-    border-bottom-color: var(--vscode-button-background);
-    color: var(--vscode-button-background);
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    font-weight: 500;
 }
 
 /* Tab content */
@@ -109,6 +125,8 @@ body {
     display: none;
     flex: 1;
     flex-direction: column;
+    gap: 16px;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -116,157 +134,196 @@ body {
     display: flex;
 }
 
-/* Agent controls */
+/* Minimal controls */
 .agent-controls {
     display: flex;
     gap: 8px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
-/* Messages */
+/* Messages container */
 .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 0;
-    margin-bottom: 16px;
-    background-color: var(--vscode-input-background);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 4px;
-    min-height: 200px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 0;
+    scroll-behavior: smooth;
 }
 
+/* Clean message bubbles */
 .message {
-    padding: 12px;
-    margin: 8px;
+    padding: 12px 16px;
+    margin: 8px 0;
     border-radius: 8px;
     max-width: 85%;
     word-wrap: break-word;
     font-size: 13px;
-    line-height: 1.4;
+    line-height: 1.5;
+    position: relative;
+    box-shadow: var(--shadow-sm);
 }
 
 .message.user {
-    background-color: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    color: white;
     margin-left: auto;
-    margin-right: 8px;
+    border-bottom-right-radius: 4px;
 }
 
 .message.agent {
-    background-color: var(--vscode-list-hoverBackground);
-    color: var(--vscode-foreground);
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
     margin-right: auto;
-    margin-left: 8px;
-    border-left: 3px solid var(--vscode-charts-blue);
-    font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
-    font-size: 12px;
+    border-bottom-left-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
 .message.system {
-    background-color: var(--vscode-notifications-background);
-    color: var(--vscode-notifications-foreground);
-    margin: 8px;
+    background: var(--surface-secondary);
+    color: var(--accent-warning);
+    border: 1px solid var(--border-muted);
+    margin: 8px auto;
     text-align: center;
-    font-style: italic;
-    border-left: 3px solid var(--vscode-charts-orange);
+    font-weight: 500;
+    font-size: 12px;
+    border-radius: 16px;
 }
 
 .message-timestamp {
     font-size: 11px;
-    opacity: 0.7;
-    margin-top: 4px;
+    opacity: 0.6;
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-weight: 300;
 }
 
-/* Input area */
+/* Modern input area */
 .input-area {
     display: flex;
     gap: 8px;
     align-items: flex-end;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 12px;
+    transition: border-color 0.15s ease;
+    flex-shrink: 0;
+}
+
+.input-area:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
 }
 
 #message-input {
     flex: 1;
-    background-color: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 4px;
-    padding: 8px 12px;
-    font-family: var(--vscode-font-family);
+    background: transparent;
+    color: var(--text-primary);
+    border: none;
+    padding: 8px 0;
+    font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    resize: vertical;
+    resize: none;
     min-height: 20px;
     max-height: 120px;
-}
-
-#message-input:focus {
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: -1px;
+    outline: none;
 }
 
 #message-input::placeholder {
-    color: var(--vscode-input-placeholderForeground);
+    color: var(--text-muted);
+    font-weight: 300;
 }
 
-/* Buttons */
+/* Material Design buttons */
 .btn {
-    background-color: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 4px;
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
     padding: 8px 16px;
     cursor: pointer;
-    font-size: 13px;
-    font-family: var(--vscode-font-family);
-    transition: background-color 0.2s ease;
-    min-width: fit-content;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: var(--shadow-sm);
 }
 
 .btn:hover {
-    background-color: var(--vscode-button-hoverBackground);
+    background: var(--surface-secondary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
 }
 
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-.btn.btn-secondary {
-    background-color: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-}
-
-.btn.btn-secondary:hover {
-    background-color: var(--vscode-button-secondaryHoverBackground);
-}
-
-.btn.btn-tertiary {
-    background-color: transparent;
-    color: var(--vscode-foreground);
-    border: 1px solid var(--vscode-input-border);
-}
-
-.btn.btn-tertiary:hover {
-    background-color: var(--vscode-list-hoverBackground);
+    transform: none;
 }
 
 .btn.btn-primary {
-    background-color: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.btn.btn-primary:hover {
+    background: #4493f8;
+    border-color: #4493f8;
+}
+
+.btn.btn-secondary {
+    background: var(--accent-secondary);
+    color: white;
+    border-color: var(--accent-secondary);
+}
+
+.btn.btn-secondary:hover {
+    background: #6d32d1;
+    border-color: #6d32d1;
+}
+
+.btn.btn-tertiary {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+}
+
+.btn.btn-tertiary:hover {
+    color: var(--text-primary);
+    background: var(--surface-primary);
 }
 
 /* Config form */
 .config-form {
     flex: 1;
     overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 20px;
 }
 
 .config-form h3 {
-    margin: 0 0 20px 0;
-    font-size: 16px;
+    margin: 0 0 24px 0;
+    font-size: 18px;
     font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
 }
 
 .form-group {
@@ -275,41 +332,45 @@ body {
 
 .form-group label {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     font-weight: 500;
-    font-size: 13px;
+    font-size: 12px;
+    color: var(--text-primary);
 }
 
 .form-group input,
 .form-group select {
     width: 100%;
-    background-color: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: 4px;
-    padding: 8px 12px;
-    font-family: var(--vscode-font-family);
+    background: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     box-sizing: border-box;
+    transition: all 0.15s ease;
 }
 
 .form-group input:focus,
 .form-group select:focus {
-    outline: 1px solid var(--vscode-focusBorder);
-    outline-offset: -1px;
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
 }
 
 .form-group small {
     display: block;
-    margin-top: 4px;
+    margin-top: 6px;
     font-size: 11px;
-    color: var(--vscode-descriptionForeground);
+    color: var(--text-muted);
+    font-weight: 300;
 }
 
 /* Model input group */
 .model-input-group {
     display: flex;
-    gap: 4px;
+    gap: 8px;
     align-items: stretch;
 }
 
@@ -321,28 +382,23 @@ body {
 
 .model-input-group .btn {
     width: auto;
-    min-width: 32px;
-    padding: 8px 12px;
+    min-width: 40px;
+    padding: 10px 12px;
     flex-shrink: 0;
-}
-
-.btn-small {
-    font-size: 12px;
-    padding: 6px 8px;
 }
 
 .form-actions {
     display: flex;
     gap: 12px;
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid var(--vscode-panel-border);
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-muted);
 }
 
-/* Scrollbar styling */
+/* Custom scrollbar */
 .messages::-webkit-scrollbar,
 .config-form::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
 }
 
 .messages::-webkit-scrollbar-track,
@@ -352,23 +408,77 @@ body {
 
 .messages::-webkit-scrollbar-thumb,
 .config-form::-webkit-scrollbar-thumb {
-    background-color: var(--vscode-scrollbarSlider-background);
-    border-radius: 4px;
+    background: var(--surface-primary);
+    border-radius: 3px;
 }
 
 .messages::-webkit-scrollbar-thumb:hover,
 .config-form::-webkit-scrollbar-thumb:hover {
-    background-color: var(--vscode-scrollbarSlider-hoverBackground);
+    background: var(--text-muted);
 }
 
-/* Responsive adjustments */
+/* Loading animation */
+.loading {
+    position: relative;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin: -7px 0 0 -7px;
+    border: 2px solid var(--accent-primary);
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Thinking indicator */
+.message.thinking {
+    background: var(--surface-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-muted);
+    margin-right: auto;
+    font-style: italic;
+    font-weight: 300;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
+.thinking-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.thinking-dots {
+    color: var(--accent-primary);
+    font-weight: 500;
+}
+
+/* Responsive design */
 @media (max-width: 400px) {
     .container {
-        padding: 8px;
+        padding: 12px;
+        gap: 12px;
     }
     
     .agent-controls {
         flex-direction: column;
+        gap: 6px;
     }
     
     .form-actions {
@@ -378,100 +488,36 @@ body {
     .input-area {
         flex-direction: column;
         align-items: stretch;
+        gap: 12px;
     }
 }
 
-/* Animation for status dot */
-@keyframes pulse {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.1); opacity: 0.7; }
-    100% { transform: scale(1); opacity: 1; }
+/* Subtle animations */
+.message {
+    animation: slideIn 0.2s ease-out;
 }
 
-.status-dot.online {
-    animation: pulse 2s infinite ease-in-out;
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-/* Loading state */
-.loading {
-    position: relative;
-    opacity: 0.6;
-    pointer-events: none;
-}
-
-.loading::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 20px;
-    height: 20px;
-    margin: -10px 0 0 -10px;
-    border: 2px solid var(--vscode-foreground);
-    border-radius: 50%;
-    border-top-color: transparent;
-    animation: spin 1s linear infinite;
-}
-
-/* Button pressed animation */
-.btn-pressed {
-    transform: scale(0.95);
-    transition: transform 0.1s ease-in-out;
-}
-
-/* Disabled save button when no changes */
+/* Button states */
 .btn-save-disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    background-color: var(--vscode-button-secondaryBackground);
+    background: var(--surface-secondary);
+    transform: none;
 }
 
 .btn-save-disabled:hover {
-    background-color: var(--vscode-button-secondaryBackground);
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* Thinking indicator */
-.message.thinking {
-    background-color: var(--vscode-list-hoverBackground);
-    color: var(--vscode-foreground);
-    margin-right: auto;
-    margin-left: 8px;
-    border-left: 3px solid var(--vscode-charts-blue);
-    opacity: 0.7;
-    font-style: italic;
-}
-
-.thinking-content {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.thinking-dots {
-    color: var(--vscode-charts-blue);
-}
-
-.dots {
-    animation: thinking-dots 1.5s ease-in-out infinite;
-}
-
-@keyframes thinking-dots {
-    0%, 20% {
-        color: var(--vscode-charts-blue);
-        transform: none;
-    }
-    50% {
-        color: var(--vscode-foreground);
-        transform: scale(1.1);
-    }
-    100% {
-        color: var(--vscode-charts-blue);
-        transform: none;
-    }
+    background: var(--surface-secondary);
+    transform: none;
+    box-shadow: var(--shadow-sm);
 }

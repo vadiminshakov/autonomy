@@ -136,7 +136,7 @@ function addMessage(type, content, timestamp = null) {
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
-    // Отключаем спиннер когда получаем ответ от агента
+    // Disable spinner when we receive response from agent
     if (type === 'agent' || type === 'system') {
         setLoading(sendButton, false);
     }
