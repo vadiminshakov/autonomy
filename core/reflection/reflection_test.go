@@ -5,31 +5,22 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/vadiminshakov/autonomy/core/entity"
 	"github.com/vadiminshakov/autonomy/core/types"
+	"github.com/vadiminshakov/autonomy/mocks"
 )
 
-// MockAIClient для тестирования
-type MockAIClient struct {
-	response *entity.AIResponse
-	err      error
-}
-
-func (m *MockAIClient) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.response, nil
-}
-
 func TestReflectionEngine_EvaluateCompletion_Success(t *testing.T) {
-	mockClient := &MockAIClient{
-		response: &entity.AIResponse{
-			Content: `COMPLETED: yes
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mocks.NewMockAIClient(ctrl)
+	mockClient.EXPECT().GenerateCode(gomock.Any(), gomock.Any()).Return(&entity.AIResponse{
+		Content: `COMPLETED: yes
 REASON: Task completed successfully
 RETRY: no`,
-		},
-	}
+	}, nil)
 
 	engine := NewReflectionEngine(mockClient)
 
@@ -74,13 +65,15 @@ RETRY: no`,
 }
 
 func TestReflectionEngine_EvaluateCompletion_Failure(t *testing.T) {
-	mockClient := &MockAIClient{
-		response: &entity.AIResponse{
-			Content: `COMPLETED: no
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mocks.NewMockAIClient(ctrl)
+	mockClient.EXPECT().GenerateCode(gomock.Any(), gomock.Any()).Return(&entity.AIResponse{
+		Content: `COMPLETED: no
 REASON: Multiple errors occurred
 RETRY: yes`,
-		},
-	}
+	}, nil)
 
 	engine := NewReflectionEngine(mockClient)
 
@@ -117,9 +110,11 @@ RETRY: yes`,
 }
 
 func TestReflectionEngine_EvaluateCompletion_AIError_Fallback(t *testing.T) {
-	mockClient := &MockAIClient{
-		err: errors.New("AI service unavailable"),
-	}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockClient := mocks.NewMockAIClient(ctrl)
+	mockClient.EXPECT().GenerateCode(gomock.Any(), gomock.Any()).Return(nil, errors.New("AI service unavailable"))
 
 	engine := NewReflectionEngine(mockClient)
 
