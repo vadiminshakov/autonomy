@@ -184,7 +184,7 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 
 // executeTools runs tool calls
 func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
-	if plan := t.getStoredPlan(); plan != nil {
+	if plan := t.getPlanFromDecompositionIfExists(); plan != nil {
 		return t.executePlan(plan)
 	}
 
@@ -197,26 +197,24 @@ func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
 	return t.executeSequential(calls)
 }
 
-// getStoredPlan retrieves a stored execution plan if available
-func (t *Task) getStoredPlan() *types.ExecutionPlan {
-	// check for decomposed tasks first (higher priority)
-	if hasDecomposedTask() {
-		decomposedTask, err := getDecomposedTask()
-		if err != nil {
-			log.Printf("Error retrieving decomposed task: %v", err)
-		} else {
-			toolCalls := decomposedTask.ConvertToToolCalls()
-			plan := t.planner.CreatePlan(toolCalls)
-			clearDecomposedTask()
-
-			log.Printf("Created execution plan from decomposed task: %s", decomposedTask.OriginalTask)
-			fmt.Println(ui.Info("Executing AI-generated task plan:"))
-			fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
-			return plan
-		}
+// getPlanFromDecompositionIfExists retrieves a stored execution plan if available
+func (t *Task) getPlanFromDecompositionIfExists() *types.ExecutionPlan {
+	if !hasDecomposedTask() {
+		return nil
 	}
 
-	return nil
+	decomposedTask, err := getDecomposedTask()
+	if err != nil {
+		log.Printf("Error retrieving decomposed task: %v", err)
+	}
+
+	toolCalls := decomposedTask.ConvertToToolCalls()
+	plan := t.planner.CreatePlan(toolCalls)
+	clearDecomposedTask()
+
+	log.Printf("Created execution plan from decomposed task: %s", decomposedTask.OriginalTask)
+	fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
+	return plan
 }
 
 // shouldUsePlanning determines if a task should use planning based on complexity
@@ -255,7 +253,7 @@ func (t *Task) executePlan(plan *types.ExecutionPlan) (bool, error) {
 
 	t.addPlanResultsToHistory(plan)
 
-	// Perform reflection if enabled
+	// perform reflection if enabled
 	if t.config.EnableReflection && t.reflectionEngine != nil && t.originalTask != "" {
 		executionTime := time.Since(startTime)
 		reflection, err := t.reflectionEngine.EvaluateCompletion(t.ctx, plan, t.originalTask)
