@@ -21,7 +21,7 @@ func Execute(name string, args map[string]interface{}) (string, error) {
 	result, err := fn(args)
 
 	// record tool usage in task state (except for task state tools themselves to avoid recursion)
-	if name != "get_task_state" && name != "get_task_summary" &&
+	if name != "get_task_state" &&
 		name != "check_tool_usage" && name != "reset_task_state" {
 		success := err == nil
 		getTaskState().RecordToolUse(name, success, result)
