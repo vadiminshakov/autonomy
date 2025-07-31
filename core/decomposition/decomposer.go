@@ -112,6 +112,7 @@ DECOMPOSITION RULES:
 5. Provide clear reasoning for each step
 6. Start with analysis/understanding steps before making changes
 7. End with validation/testing steps when appropriate
+8. Avoid over-decomposition - keep steps meaningful and substantial
 
 OUTPUT FORMAT:
 Provide your response as a JSON object with this structure:

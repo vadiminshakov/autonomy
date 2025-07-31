@@ -22,6 +22,12 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("parameter 'task_description' must be a non-empty string")
 	}
 
+	// Check if we already have a decomposed task to prevent repeated planning
+	state := getTaskState()
+	if hasTask, exists := state.GetContext("has_decomposed_task"); exists && hasTask == true {
+		return "", fmt.Errorf("task already decomposed - use existing plan or clear first")
+	}
+
 	cfg, err := config.LoadConfigFile()
 	if err != nil {
 		return "", fmt.Errorf("failed to load config: %v", err)
@@ -42,10 +48,10 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("failed to decompose task: %v", err)
 	}
 
-	state := getTaskState()
-	state.SetContext("has_decomposed_task", true)
-	state.SetContext("decomposed_task", result)
-	state.SetContext("has_execution_plan", true)
+	taskState := getTaskState()
+	taskState.SetContext("has_decomposed_task", true)
+	taskState.SetContext("decomposed_task", result)
+	taskState.SetContext("has_execution_plan", true)
 
 	toolCalls := result.ConvertToToolCalls()
 
@@ -60,7 +66,7 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("failed to serialize plan: %v", err)
 	}
 
-	state.SetContext("execution_plan", string(planJSON))
+	taskState.SetContext("execution_plan", string(planJSON))
 
 	summary := result.GetStepSummary()
 	return summary, nil
