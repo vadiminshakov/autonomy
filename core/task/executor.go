@@ -64,13 +64,8 @@ func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *types.Executi
 		return fmt.Errorf("execution plan completed with failures")
 	}
 
-	// generate and display task summary using existing task state system
-	summaryResult, summaryErr := tools.Execute("get_task_summary", map[string]any{})
-
 	fmt.Println(ui.Success("Plan execution completed successfully"))
-	if summaryErr == nil && summaryResult != "" {
-		fmt.Println(ui.Info(summaryResult))
-	}
+	
 	return nil
 }
 

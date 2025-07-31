@@ -70,7 +70,6 @@ CONTEXT AWARENESS:
 CRITICAL COMPLETION RULES:
 - Use attempt_completion when sufficient information is gathered
 - Provide clear, actionable results in completion
-- Include execution summary for complex tasks (include_summary=true)
 - Don't continue tool usage beyond necessity
 - For analysis: gather data → analyze → complete
 - For modifications: plan → execute → validate → complete

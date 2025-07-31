@@ -18,10 +18,6 @@ func DetermineToolChoiceMode(userMessage string) ToolChoiceMode {
 	// convert to lowercase for case-insensitive matching
 	lowerMsg := strings.ToLower(userMessage)
 
-	if isToolResultMessage(lowerMsg) {
-		return ToolChoiceModeAny
-	}
-
 	msgType := analyzeMessageType(lowerMsg)
 
 	switch msgType {
@@ -35,48 +31,6 @@ func DetermineToolChoiceMode(userMessage string) ToolChoiceMode {
 		// when uncertain, prefer tool usage
 		return ToolChoiceModeAny
 	}
-}
-
-// isToolResultMessage checks if message is a tool result
-func isToolResultMessage(msg string) bool {
-	// Structural patterns that indicate tool results
-	patterns := []string{
-		`^result of \w+:`,
-		`^error executing \w+:`,
-		`^✅ done \w+`,
-		`^❌ error in \w+`,
-		`tools used:`,
-		`files created:`,
-		`files modified:`,
-		`files read:`,
-		`commands executed:`,
-	}
-
-	for _, pattern := range patterns {
-		if strings.Contains(msg, pattern) {
-			return true
-		}
-	}
-
-	// check for common result indicators
-	resultIndicators := []string{
-		"result of ",
-		"error executing ",
-		"task state summary",
-		"✅ done",
-		"❌ error",
-		"successfully",
-		"failed to",
-		"completed",
-	}
-
-	for _, indicator := range resultIndicators {
-		if strings.Contains(msg, indicator) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // analyzeMessageType determines if message is an action or question
