@@ -74,12 +74,6 @@ func TestTaskStateTools(t *testing.T) {
 	_, ok := stateData["start_time"]
 	require.True(t, ok, "Task state should contain start_time")
 
-	// test get_task_summary tool
-	state.RecordToolUse("test_tool", true, "success")
-	summary, err := getTaskSummary(map[string]interface{}{})
-	require.NoError(t, err, "get_task_summary failed")
-	require.Contains(t, summary, "Task State Summary", "Summary should contain header")
-
 	// test check_tool_usage tool
 	usage, err := checkToolUsage(map[string]interface{}{"tool": "test_tool"})
 	require.NoError(t, err, "check_tool_usage failed")

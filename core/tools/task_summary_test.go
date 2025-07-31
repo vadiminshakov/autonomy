@@ -82,13 +82,10 @@ func TestAttemptCompletionWithSummary(t *testing.T) {
 			name: "Completion with summary",
 			args: map[string]interface{}{
 				"result":          "analysis completed",
-				"include_summary": true,
 			},
 			expected: []string{
 				"🎉 Task completed:",
 				"analysis completed",
-				"Task State Summary",
-				"Tools Used:",
 			},
 		},
 		{
@@ -103,13 +100,9 @@ func TestAttemptCompletionWithSummary(t *testing.T) {
 		},
 		{
 			name: "Empty completion with summary",
-			args: map[string]interface{}{
-				"include_summary": true,
-			},
+			args: map[string]interface{}{},
 			expected: []string{
 				"🎉 Task completed",
-				"Task State Summary",
-				"Tools Used:",
 			},
 		},
 	}

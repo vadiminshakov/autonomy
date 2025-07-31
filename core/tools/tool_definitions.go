@@ -19,7 +19,7 @@ func GetToolDescriptions() []entity.ToolDefinition {
 		"git_log":               "Show commit history",
 		"git_diff":              "Show git diff of changes",
 		"git_branch":            "Create, list or switch git branches",
-		"attempt_completion":    "Mark task as finished and provide final summary. Optional: include_summary=true to add detailed execution summary",
+		"attempt_completion":    "Mark task as finished and provide final summary.",
 		"post_request":          "Send HTTP POST request and return response",
 		"get_request":           "Send HTTP GET request and return response",
 		"copy_file":             "Copy file from source path to destination",
@@ -39,7 +39,6 @@ func GetToolDescriptions() []entity.ToolDefinition {
 		"extract_function_go":   "Extract selected lines of Go code into a new function",
 		"inline_function_go":    "Inline a Go function call by replacing it with function body",
 		"get_task_state":        "Get current task execution state as JSON",
-		"get_task_summary":      "Get human-readable summary of task progress",
 		"reset_task_state":      "Reset task execution state",
 		"check_tool_usage":      "Check if and how many times a specific tool has been used",
 		"decompose_task":        "Task decomposition: breaks complex tasks into executable steps using intelligent analysis",
@@ -164,7 +163,7 @@ func GetToolDescriptions() []entity.ToolDefinition {
 			}
 			schema["required"] = []string{"file", "function_name", "line_number"}
 
-		case "get_task_state", "get_task_summary", "reset_task_state":
+		case "get_task_state", "reset_task_state":
 			schema["properties"] = map[string]any{}
 			schema["required"] = []string{}
 
@@ -188,10 +187,6 @@ func GetToolDescriptions() []entity.ToolDefinition {
 				"result": map[string]string{
 					"type":        "string",
 					"description": "Description of what was accomplished",
-				},
-				"include_summary": map[string]any{
-					"type":        "boolean",
-					"description": "Whether to include detailed execution summary (optional, default: false)",
 				},
 			}
 			schema["required"] = []string{}

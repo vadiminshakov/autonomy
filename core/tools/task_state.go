@@ -3,14 +3,12 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
 
 func init() {
 	Register("get_task_state", getTaskStateAsJSON)
-	Register("get_task_summary", getTaskSummary)
 	Register("reset_task_state", resetTaskState)
 	Register("check_tool_usage", checkToolUsage)
 }
@@ -44,12 +42,6 @@ func getTaskStateAsJSON(args map[string]interface{}) (string, error) {
 	}
 
 	return string(data), nil
-}
-
-// getTaskSummary returns a human-readable summary of the task state
-func getTaskSummary(args map[string]interface{}) (string, error) {
-	state := getTaskState()
-	return state.GetSummary(), nil
 }
 
 // resetTaskState resets the task state
@@ -178,64 +170,6 @@ func (ts *taskState) GetContext(key string) (interface{}, bool) {
 
 	val, ok := ts.Context[key]
 	return val, ok
-}
-
-// GetSummary returns a summary of the task state
-func (ts *taskState) GetSummary() string {
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-
-	duration := time.Since(ts.StartTime).Round(time.Second)
-
-	var summary strings.Builder
-	summary.WriteString(fmt.Sprintf("Task State Summary (Duration: %s)\n", duration))
-	summary.WriteString("=====================================\n\n")
-
-	// tool usage
-	summary.WriteString("Tools Used:\n")
-	for tool, count := range ts.CompletedTools {
-		summary.WriteString(fmt.Sprintf("  - %s: %d times\n", tool, count))
-	}
-
-	// files
-	if len(ts.CreatedFiles) > 0 {
-		summary.WriteString("\nCreated Files:\n")
-		for _, f := range ts.CreatedFiles {
-			summary.WriteString(fmt.Sprintf("  - %s\n", f))
-		}
-	}
-
-	if len(ts.ModifiedFiles) > 0 {
-		summary.WriteString("\nModified Files:\n")
-		for _, f := range ts.ModifiedFiles {
-			summary.WriteString(fmt.Sprintf("  - %s\n", f))
-		}
-	}
-
-	if len(ts.ReadFiles) > 0 {
-		summary.WriteString(fmt.Sprintf("\nRead %d files\n", len(ts.ReadFiles)))
-	}
-
-	// commands
-	if len(ts.ExecutedCommands) > 0 {
-		summary.WriteString("\nExecuted Commands:\n")
-		for _, cmd := range ts.ExecutedCommands {
-			if len(cmd) > 60 {
-				cmd = cmd[:57] + "..."
-			}
-			summary.WriteString(fmt.Sprintf("  - %s\n", cmd))
-		}
-	}
-
-	// errors
-	if len(ts.Errors) > 0 {
-		summary.WriteString("\nErrors Encountered:\n")
-		for _, err := range ts.Errors {
-			summary.WriteString(fmt.Sprintf("  - %s\n", err))
-		}
-	}
-
-	return summary.String()
 }
 
 // Reset resets the task state
