@@ -488,6 +488,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <link href="${styleUri}" rel="stylesheet">
+            <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
             <title>Autonomy Agent</title>
         </head>
         <body>

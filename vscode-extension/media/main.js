@@ -123,7 +123,40 @@ function addMessage(type, content, timestamp = null) {
     messageDiv.className = `message ${type}`;
     
     const contentDiv = document.createElement('div');
-    contentDiv.textContent = content;
+    contentDiv.className = 'message-content';
+    
+    // Parse markdown for agent messages, plain text for others
+    if (type === 'agent' && typeof marked !== 'undefined') {
+        try {
+            // Process escaped newlines and other escape sequences
+            let processedContent = content
+                .replace(/\\n/g, '\n')           // Convert \n to actual newlines
+                .replace(/\\t/g, '\t')           // Convert \t to actual tabs
+                .replace(/\\r/g, '\r')           // Convert \r to actual carriage returns
+                .replace(/\\\\/g, '\\');         // Convert \\ to single backslash
+            
+            // Configure marked with safe options
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                sanitize: false,
+                highlight: function(code, lang) {
+                    // Simple syntax highlighting for common languages
+                    if (lang && ['javascript', 'js', 'python', 'py', 'bash', 'sh', 'json', 'xml', 'html', 'css', 'go', 'rust'].includes(lang.toLowerCase())) {
+                        return `<code class="language-${lang.toLowerCase()}">${escapeHtml(code)}</code>`;
+                    }
+                    return `<code>${escapeHtml(code)}</code>`;
+                }
+            });
+            contentDiv.innerHTML = marked.parse(processedContent);
+        } catch (e) {
+            // Fallback to plain text if markdown parsing fails
+            contentDiv.textContent = content;
+        }
+    } else {
+        contentDiv.textContent = content;
+    }
+    
     messageDiv.appendChild(contentDiv);
 
     if (timestamp) {
@@ -140,6 +173,12 @@ function addMessage(type, content, timestamp = null) {
     if (type === 'agent' || type === 'system') {
         setLoading(sendButton, false);
     }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function addThinkingIndicator(messageId) {
