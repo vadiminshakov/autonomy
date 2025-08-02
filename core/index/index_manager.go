@@ -293,14 +293,7 @@ func (im *IndexManager) periodicRebuild() {
 			}
 			im.mu.RUnlock()
 
-			ui.ShowIndexStatus("Starting periodic index rebuild...")
-			go func() {
-				if err := im.RebuildIndex(); err != nil {
-					ui.ShowIndexError(fmt.Sprintf("Periodic index rebuild failed: %v", err))
-				} else {
-					ui.ShowIndexSuccess("Periodic index rebuild completed successfully")
-				}
-			}()
+			go im.RebuildIndex()
 
 		case <-im.ctx.Done():
 			return
