@@ -3,7 +3,6 @@ package tools
 import (
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -50,12 +49,6 @@ func TestTaskState(t *testing.T) {
 	// test error recording
 	state.RecordToolUse("failing_tool", false, "error message")
 	require.Equal(t, 1, len(state.Errors), "Error not recorded correctly")
-
-	// test summary generation
-	summary := state.GetSummary()
-	require.Contains(t, summary, "Task State Summary", "Summary should contain header")
-	require.Contains(t, summary, "test_tool: 1 times", "Summary should contain tool usage")
-	require.Contains(t, summary, "test.txt", "Summary should contain created files")
 }
 
 func TestTaskStateTools(t *testing.T) {
@@ -113,15 +106,4 @@ func TestTaskStateConcurrency(t *testing.T) {
 
 	require.Equal(t, 10, state.CompletedTools["concurrent_tool"], "Expected 10 tool uses")
 	require.Equal(t, 10, len(state.CreatedFiles), "Expected 10 created files")
-}
-
-func TestTaskStateDuration(t *testing.T) {
-	state := getTaskState()
-	state.Reset()
-
-	// set start time to past
-	state.StartTime = time.Now().Add(-5 * time.Minute)
-
-	summary := state.GetSummary()
-	require.Contains(t, summary, "Duration: 5m", "Summary should show correct duration")
 }

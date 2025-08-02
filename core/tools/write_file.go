@@ -72,13 +72,14 @@ func WriteFile(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("failed to rename temp file to %s: %v", pathVal, err)
 	}
 
-	// Track file creation/modification
 	state := getTaskState()
 	if _, err := os.Stat(cleanPath); err == nil {
 		state.RecordFileModified(cleanPath)
 	} else {
 		state.RecordFileCreated(cleanPath)
 	}
+
+	go autoValidateAfterFileChange(cleanPath)
 
 	return fmt.Sprintf("file %s successfully written (%d bytes)", pathVal, len(contentVal)), nil
 }
