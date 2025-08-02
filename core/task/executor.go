@@ -65,7 +65,7 @@ func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *types.Executi
 	}
 
 	fmt.Println(ui.Success("Plan execution completed successfully"))
-	
+
 	return nil
 }
 

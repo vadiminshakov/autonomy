@@ -19,26 +19,26 @@ import (
 
 // Config holds task execution configuration
 type Config struct {
-	MaxIterations       int
-	MaxHistorySize      int
-	AICallTimeout       time.Duration
-	ToolTimeout         time.Duration
-	MinAPIInterval      time.Duration
-	MaxNoToolAttempts   int
-	EnableReflection    bool
+	MaxIterations        int
+	MaxHistorySize       int
+	AICallTimeout        time.Duration
+	ToolTimeout          time.Duration
+	MinAPIInterval       time.Duration
+	MaxNoToolAttempts    int
+	EnableReflection     bool
 	EnableFileValidation bool
 }
 
 // DefaultConfig returns default task configuration
 func defaultConfig() Config {
 	return Config{
-		MaxIterations:       100,
-		MaxHistorySize:      80,
-		AICallTimeout:       300 * time.Second,
-		ToolTimeout:         30 * time.Second,
-		MinAPIInterval:      1 * time.Second,
-		MaxNoToolAttempts:   5,
-		EnableReflection:    true,
+		MaxIterations:        100,
+		MaxHistorySize:       80,
+		AICallTimeout:        300 * time.Second,
+		ToolTimeout:          30 * time.Second,
+		MinAPIInterval:       1 * time.Second,
+		MaxNoToolAttempts:    5,
+		EnableReflection:     true,
 		EnableFileValidation: true,
 	}
 }

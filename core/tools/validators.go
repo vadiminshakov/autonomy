@@ -10,6 +10,39 @@ import (
 	"time"
 )
 
+// validationCheck represents a single validation operation
+type validationCheck struct {
+	name    string
+	checkFn func(ctx context.Context, filePath string) error
+	isError bool // true for errors, false for warnings
+}
+
+// runValidationChecks executes a series of validation checks and returns the result
+func runValidationChecks(validatorName, filePath string, checks []validationCheck, ctx context.Context) *ValidationResult {
+	start := time.Now()
+	result := &ValidationResult{
+		ValidatorName: validatorName,
+		FilePath:      filePath,
+		Success:       true,
+		Errors:        []string{},
+		Warnings:      []string{},
+	}
+
+	for _, check := range checks {
+		if err := check.checkFn(ctx, filePath); err != nil {
+			if check.isError {
+				result.Success = false
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", check.name, err))
+			} else {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", check.name, err))
+			}
+		}
+	}
+
+	result.Duration = time.Since(start)
+	return result
+}
+
 // GoValidator validates Go files
 type GoValidator struct{}
 
@@ -111,29 +144,11 @@ func (jsv *JavaScriptValidator) CanValidate(filePath string) bool {
 }
 
 func (jsv *JavaScriptValidator) Validate(ctx context.Context, filePath string) *ValidationResult {
-	start := time.Now()
-	result := &ValidationResult{
-		ValidatorName: jsv.Name(),
-		FilePath:      filePath,
-		Success:       true,
-		Errors:        []string{},
-		Warnings:      []string{},
+	checks := []validationCheck{
+		{"syntax", jsv.checkNodeSyntax, true},
+		{"eslint", jsv.checkESLint, false}, // ESLint errors are warnings since it might not be configured
 	}
-
-	// try Node.js syntax check
-	if err := jsv.checkNodeSyntax(ctx, filePath); err != nil {
-		result.Success = false
-		result.Errors = append(result.Errors, fmt.Sprintf("syntax: %v", err))
-	}
-
-	// try ESLint if available
-	if err := jsv.checkESLint(ctx, filePath); err != nil {
-		// ESLint errors are treated as warnings since it might not be configured
-		result.Warnings = append(result.Warnings, fmt.Sprintf("eslint: %v", err))
-	}
-
-	result.Duration = time.Since(start)
-	return result
+	return runValidationChecks(jsv.Name(), filePath, checks, ctx)
 }
 
 func (jsv *JavaScriptValidator) checkNodeSyntax(ctx context.Context, filePath string) error {
@@ -220,29 +235,11 @@ func (pv *PythonValidator) CanValidate(filePath string) bool {
 }
 
 func (pv *PythonValidator) Validate(ctx context.Context, filePath string) *ValidationResult {
-	start := time.Now()
-	result := &ValidationResult{
-		ValidatorName: pv.Name(),
-		FilePath:      filePath,
-		Success:       true,
-		Errors:        []string{},
-		Warnings:      []string{},
+	checks := []validationCheck{
+		{"syntax", pv.checkPythonSyntax, true},
+		{"flake8", pv.checkFlake8, false}, // Flake8 errors are warnings since it might not be configured
 	}
-
-	// check Python syntax
-	if err := pv.checkPythonSyntax(ctx, filePath); err != nil {
-		result.Success = false
-		result.Errors = append(result.Errors, fmt.Sprintf("syntax: %v", err))
-	}
-
-	// try flake8 if available
-	if err := pv.checkFlake8(ctx, filePath); err != nil {
-		// Flake8 errors are treated as warnings since it might not be configured
-		result.Warnings = append(result.Warnings, fmt.Sprintf("flake8: %v", err))
-	}
-
-	result.Duration = time.Since(start)
-	return result
+	return runValidationChecks(pv.Name(), filePath, checks, ctx)
 }
 
 func (pv *PythonValidator) checkPythonSyntax(ctx context.Context, filePath string) error {

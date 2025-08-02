@@ -50,7 +50,7 @@ func fixValidationErrors(args map[string]interface{}) (string, error) {
 	}
 
 	// write fixed content back to file
-	if err := os.WriteFile(filePath, []byte(fixedContent), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(fixedContent), 0600); err != nil {
 		return "", fmt.Errorf("failed to write fixed content: %v", err)
 	}
 
@@ -58,7 +58,7 @@ func fixValidationErrors(args map[string]interface{}) (string, error) {
 	engine := getValidationEngine()
 	ctx := context.Background()
 	results := engine.ValidateFile(ctx, filePath)
-	
+
 	if len(results) == 0 {
 		return fmt.Sprintf("✅ File %s fixed successfully (no validators applied)", filePath), nil
 	}
@@ -83,7 +83,7 @@ func fixValidationErrors(args map[string]interface{}) (string, error) {
 // requestLLMToFixErrors sends a request to LLM to fix validation errors
 func requestLLMToFixErrors(filePath, content string, errors []string) (string, error) {
 	prompt := buildFixErrorsPrompt(filePath, content, errors)
-	
+
 	// use the existing tool system to call LLM
 	// this will use the apply_diff tool to fix the file
 	args := map[string]interface{}{
@@ -92,7 +92,7 @@ func requestLLMToFixErrors(filePath, content string, errors []string) (string, e
 		"prompt":      prompt,
 		"task":        "Fix validation errors in this file",
 	}
-	
+
 	// call apply_diff tool which can use LLM to generate fixes
 	_, err := Execute("apply_diff", args)
 	if err != nil {
@@ -104,22 +104,22 @@ func requestLLMToFixErrors(filePath, content string, errors []string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("failed to read updated file: %v", err)
 	}
-	
+
 	return string(updatedContent), nil
 }
 
 // buildFixErrorsPrompt creates a prompt for LLM to fix validation errors
 func buildFixErrorsPrompt(filePath, content string, errors []string) string {
 	var prompt strings.Builder
-	
+
 	prompt.WriteString("Fix the following validation errors in this code file:\n\n")
 	prompt.WriteString(fmt.Sprintf("File: %s\n\n", filePath))
-	
+
 	prompt.WriteString("Validation Errors:\n")
 	for i, err := range errors {
 		prompt.WriteString(fmt.Sprintf("%d. %s\n", i+1, err))
 	}
-	
+
 	prompt.WriteString("\nCurrent Code:\n```")
 	if strings.HasSuffix(filePath, ".go") {
 		prompt.WriteString("go")
@@ -131,10 +131,10 @@ func buildFixErrorsPrompt(filePath, content string, errors []string) string {
 	prompt.WriteString("\n")
 	prompt.WriteString(content)
 	prompt.WriteString("\n```\n\n")
-	
+
 	prompt.WriteString("Please provide the corrected code that fixes all validation errors. ")
 	prompt.WriteString("Return ONLY the corrected code without explanations or markdown formatting. ")
 	prompt.WriteString("Preserve the original functionality and structure as much as possible.\n")
-	
+
 	return prompt.String()
 }
