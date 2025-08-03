@@ -47,9 +47,9 @@ func NewTaskDecomposer(cfg config.Config) (*TaskDecomposer, error) {
 	case "anthropic":
 		client, err = ai.NewAnthropic(cfg)
 	case "openai", "openrouter":
-		client, err = ai.NewOpenai(cfg)
+		client, err = ai.NewOpenAI(cfg)
 	default:
-		client, err = ai.NewOpenai(cfg) // default to OpenAI
+		client, err = ai.NewOpenAI(cfg) // default to OpenAI
 	}
 
 	if err != nil {
