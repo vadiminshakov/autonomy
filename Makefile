@@ -25,7 +25,7 @@ lint:
 # Install binary to system
 install: build
 	@echo "Installing $(BINARY_NAME)..."
-	@sudo cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/
+	@cp $(BUILD_DIR)/$(BINARY_NAME) ~/.local/bin/
 
 # Development setup
 dev-setup:
