@@ -41,14 +41,14 @@ func main() {
 
 	switch cfg.Provider {
 	case "openai":
-		client, err = ai.NewOpenai(cfg)
+		client, err = ai.NewOpenAI(cfg)
 	case "anthropic":
 		client, err = ai.NewAnthropic(cfg)
 
 	case "openrouter":
-		client, err = ai.NewOpenai(cfg)
+		client, err = ai.NewOpenAI(cfg)
 	case "local":
-		client, err = ai.NewOpenai(cfg)
+		client, err = ai.NewOpenAI(cfg)
 	default:
 		log.Fatalf("unknown provider %s in config", cfg.Provider)
 	}
