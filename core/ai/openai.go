@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
-	"github.com/pkg/errors"
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/vadiminshakov/autonomy/core/config"
@@ -33,7 +33,7 @@ func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCom
 	}
 
 	for _, msg := range data.Messages {
-		if msg.Content == "" {
+		if msg.Content == "" && len(msg.ToolCalls) == 0 {
 			continue
 		}
 
@@ -43,37 +43,68 @@ func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCom
 			role = openai.ChatMessageRoleUser
 		case "assistant":
 			role = openai.ChatMessageRoleAssistant
+		case "tool":
+			role = openai.ChatMessageRoleTool
 		default:
 			role = openai.ChatMessageRoleUser
 		}
 
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    role,
-			Content: msg.Content,
-		})
+		// handle assistant messages with tool calls
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			var toolCalls []openai.ToolCall
+			for i, tc := range msg.ToolCalls {
+				argsJSON, _ := json.Marshal(tc.Args)
+				toolCalls = append(toolCalls, openai.ToolCall{
+					ID:   fmt.Sprintf("call_%d", i),
+					Type: "function",
+					Function: openai.FunctionCall{
+						Name:      tc.Name,
+						Arguments: string(argsJSON),
+					},
+				})
+			}
+			
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:      role,
+				Content:   msg.Content,
+				ToolCalls: toolCalls,
+			})
+		} else if msg.Role == "tool" {
+			// handle tool response messages
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:       role,
+				Content:    msg.Content,
+				ToolCallID: msg.ToolCallID,
+			})
+		} else {
+			// handle regular messages
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    role,
+				Content: msg.Content,
+			})
+		}
 	}
 
 	return messages
 }
 
-func NewOpenai(cfg config.Config) (*OpenAIClient, error) {
+func NewOpenAI(cfg config.Config) (*OpenAIClient, error) {
 	clientConfig := openai.DefaultConfig(cfg.APIKey)
 	clientConfig.BaseURL = cfg.BaseURL
 
 	client := openai.NewClientWithConfig(clientConfig)
 
-	model := cfg.Model
-
 	return &OpenAIClient{
 		client: client,
-		model:  model,
+		model:  cfg.Model,
 	}, nil
 }
 
-// GenerateCode generates AI response using OpenAI API
-//
-//nolint:gocyclo
 func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
+	return o.generateCodeDirect(ctx, promptData)
+}
+
+func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
 	formatter := &OpenAIFormatter{}
 	messages := formatter.FormatPrompt(&promptData)
 
@@ -105,6 +136,10 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 		toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
 		toolChoice := convertToOpenAIToolChoice(toolChoiceMode)
 		req.ToolChoice = toolChoice
+		
+		// Debug logging for tool choice decisions
+		log.Printf("OpenAI API: Tool choice mode=%d, choice=%v, last_user_msg='%s'",
+			toolChoiceMode, toolChoice, lastUserMessage)
 	}
 
 	var resp openai.ChatCompletionResponse
@@ -146,7 +181,8 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, errors.New("no response choices")
+		return nil, fmt.Errorf("no response choices - model: %s, response ID: %s, usage: %+v", 
+			model, resp.ID, resp.Usage)
 	}
 
 	choice := resp.Choices[0]
@@ -245,7 +281,8 @@ func convertTools(tools []entity.ToolDefinition) []openai.Tool {
 // parseJSONResponse parses the model response for JSON with tool calls
 func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*entity.AIResponse, error) {
 	if len(resp.Choices) == 0 {
-		return nil, errors.New("no response choices")
+		return nil, fmt.Errorf("no response choices in parseJSONResponse - response ID: %s, usage: %+v", 
+			resp.ID, resp.Usage)
 	}
 
 	choice := resp.Choices[0]
@@ -291,13 +328,13 @@ func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*e
 }
 
 // convertToOpenAIToolChoice converts general tool choice mode to OpenAI format
-func convertToOpenAIToolChoice(mode ToolChoiceMode) string {
+func convertToOpenAIToolChoice(mode ToolChoiceMode) interface{} {
 	switch mode {
 	case ToolChoiceModeAuto:
 		return "auto"
 	case ToolChoiceModeAny:
-		return "any"
+		return "required"  // OpenAI uses "required" to force tool usage
 	default:
-		return "any"
+		return "auto"
 	}
 }
