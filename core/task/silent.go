@@ -7,13 +7,15 @@ import (
 
 // Tools considered "silent" – output is shown in truncated form
 var silentTools = map[string]bool{
-	"read_file":             true,
-	"write_file":            true,
-	"get_project_structure": true,
-	"search_dir":            true,
-	"find_files":            true,
-	"dependency_analyzer":   true,
-	"go_vet":                true,
+	"read_file":               true,
+	"write_file":              true,
+	"get_project_structure":   true,
+	"search_dir":              true,
+	"find_files":              true,
+	"dependency_analyzer":     true,
+	"go_vet":                  true,
+	"fix_validation_errors":   true,
+	"validate_modified_files": true,
 }
 
 // isSilentTool checks if tool output should be summarized
@@ -83,6 +85,18 @@ func silentToolSummary(toolName string, args map[string]any, result string) stri
 		}
 
 		return " - vet issues"
+
+	case "fix_validation_errors":
+		return ""
+
+	case "validate_modified_files":
+		if strings.Contains(result, "All files passed validation") {
+			return " - all files valid"
+		}
+		if strings.Contains(result, "validation issues found") {
+			return " - validation issues found"
+		}
+		return " - validation completed"
 
 	default:
 		return ""
