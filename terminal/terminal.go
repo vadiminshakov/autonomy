@@ -16,13 +16,13 @@ import (
 func newAIClient(cfg config.Config) (task.AIClient, error) {
 	switch cfg.Provider {
 	case "openai":
-		return ai.NewOpenai(cfg)
+		return ai.NewOpenAI(cfg)
 	case "anthropic":
 		return ai.NewAnthropic(cfg)
 	case "openrouter":
-		return ai.NewOpenai(cfg)
+		return ai.NewOpenAI(cfg)
 	case "local":
-		return ai.NewOpenai(cfg)
+		return ai.NewOpenAI(cfg)
 	default:
 		return nil, fmt.Errorf("unknown provider %s in config", cfg.Provider)
 	}
@@ -88,7 +88,7 @@ func RunHeadless(client task.AIClient) error {
 			continue
 		}
 
-		// Handle special commands
+		// handle special commands
 		switch input {
 		case "exit", "quit":
 			fmt.Printf("Shutting down autonomy agent\n")

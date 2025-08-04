@@ -12,7 +12,7 @@ const (
 	colorBold  = "\033[1m"
 	colorDim   = "\033[2m"
 
-	// Foreground colors
+	// foreground colors
 	colorRed    = "\033[31m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
@@ -21,7 +21,7 @@ const (
 	colorCyan   = "\033[36m"
 	colorWhite  = "\033[37m"
 
-	// Bright colors
+	// bright colors
 	colorBrightRed    = "\033[91m"
 	colorBrightGreen  = "\033[92m"
 	colorBrightYellow = "\033[93m"
