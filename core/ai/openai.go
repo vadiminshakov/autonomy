@@ -137,7 +137,7 @@ func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity
 		toolChoice := convertToOpenAIToolChoice(toolChoiceMode)
 		req.ToolChoice = toolChoice
 		
-		// Debug logging for tool choice decisions
+		// debug logging for tool choice decisions
 		log.Printf("OpenAI API: Tool choice mode=%d, choice=%v, last_user_msg='%s'",
 			toolChoiceMode, toolChoice, lastUserMessage)
 	}
@@ -154,7 +154,7 @@ func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity
 	}); err != nil {
 		// try JSON fallback for HTTP 400
 		if apiErr, ok := err.(*openai.APIError); ok && apiErr.HTTPStatusCode == http.StatusBadRequest {
-			// Use MCP format in fallback for models that understand it
+			// use MCP format in fallback for models that understand it
 			messagesWithMCP := o.buildMCPPrompt(messages, promptData.Tools)
 			reqWithoutTools := openai.ChatCompletionRequest{
 				Model:     model,

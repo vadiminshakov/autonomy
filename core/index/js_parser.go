@@ -277,7 +277,7 @@ func (p *JSParser) extractInterfaces(content string, packageName string, filePat
 func (p *JSParser) extractVariables(content string, packageName string, filePath string) []CodeSymbol {
 	var symbols []CodeSymbol
 
-	// Go's regex doesn't support negative lookahead, so we'll use a simpler pattern
+	// go's regex doesn't support negative lookahead, so we'll use a simpler pattern
 	varPattern := `(?m)^(?:export\s+)?(?:const|let|var)\s+(\w+)(?:\s*:\s*([^=]+))?\s*=\s*`
 	varRe := regexp.MustCompile(varPattern)
 	matches := varRe.FindAllStringSubmatch(content, -1)

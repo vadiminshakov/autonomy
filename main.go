@@ -17,7 +17,7 @@ import (
 func main() {
 	var client task.AIClient
 
-	// Parse command line flags
+	// parse command line flags
 	var headless = flag.Bool("headless", false, "Run in headless mode (for VS Code extension)")
 	var version = flag.Bool("version", false, "Show version information")
 	flag.Parse()

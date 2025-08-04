@@ -88,7 +88,7 @@ func saveConfigFile(cfg Config) error {
 func InteractiveSetup() (Config, error) {
 	fmt.Println("🔧 Initial configuration (Autonomy)")
 
-	// Step 1: choose config type (cloud vs local)
+	// step 1: choose config type (cloud vs local)
 	configTypes := []string{"cloud", "local"}
 	typeSel := promptui.Select{
 		Label: "Select configuration type",
@@ -103,7 +103,7 @@ func InteractiveSetup() (Config, error) {
 
 	switch typeChoice {
 	case "cloud":
-		// Provider selection
+		// provider selection
 		providers := []string{"openai", "anthropic", "openrouter"}
 		provSel := promptui.Select{
 			Label: "Select cloud provider",
