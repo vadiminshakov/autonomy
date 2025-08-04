@@ -103,7 +103,7 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *type
 		close(resultChan)
 	}()
 
-	// Process results as they come in
+	// process results as they come in
 	var toolErrors []error
 	completedCount := 0
 

@@ -60,7 +60,7 @@ func (p *Planner) CreatePlan(toolCalls []entity.ToolCall) *types.ExecutionPlan {
 func (p *Planner) inferDependencies(current entity.ToolCall, previous []entity.ToolCall) []string {
 	var deps []string
 
-	// Rules for dependency inference:
+	// rules for dependency inference:
 	switch current.Name {
 	case "analyze_code_go":
 		// analyze_code_go depends on read_file for the same file

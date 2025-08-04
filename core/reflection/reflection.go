@@ -151,7 +151,7 @@ func (sre *ReflectionEngine) simpleEvaluation(plan *types.ExecutionPlan) *Reflec
 	totalSteps := len(plan.Steps)
 	successRate := float64(successCount) / float64(totalSteps)
 
-	// Task is completed if attempt_completion succeeded or high success rate
+	// task is completed if attempt_completion succeeded or high success rate
 	taskCompleted := completionSucceeded || (successRate >= 0.8 && !hasAttemptCompletion)
 
 	var reason string

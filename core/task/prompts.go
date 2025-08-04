@@ -40,7 +40,7 @@ Pick ONE tool and execute it immediately:
 Execute the most relevant tool for the current request.`
 
 func NewPromptData() *entity.PromptData {
-	// Get complete tool definitions with schemas from the common function
+	// get complete tool definitions with schemas from the common function
 	defs := tools.GetToolDescriptions()
 
 	return &entity.PromptData{
