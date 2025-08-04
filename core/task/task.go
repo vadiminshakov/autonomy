@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -29,15 +28,14 @@ type Config struct {
 	EnableFileValidation bool
 }
 
-// DefaultConfig returns default task configuration
+// defaultConfig returns default task configuration
 func defaultConfig() Config {
 	return Config{
 		MaxIterations:        100,
 		MaxHistorySize:       80,
 		AICallTimeout:        300 * time.Second,
-		ToolTimeout:          30 * time.Second,
-		MinAPIInterval:       1 * time.Second,
-		MaxNoToolAttempts:    5,
+		ToolTimeout:          20 * time.Second,
+		MaxNoToolAttempts:    10,
 		EnableReflection:     true,
 		EnableFileValidation: true,
 	}
@@ -56,10 +54,11 @@ type Task struct {
 	promptData *entity.PromptData
 	config     Config
 
-	mu          sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	noToolCount int
+	mu                sync.RWMutex
+	ctx               context.Context
+	cancel            context.CancelFunc
+	noToolCount       int
+	justExecutedTools bool
 
 	planner          *Planner
 	reflectionEngine *reflection.ReflectionEngine
@@ -129,11 +128,40 @@ func (t *Task) ProcessTask() error {
 			return t.handleAIError(err)
 		}
 
-		t.addAssistantMessage(response.Content)
+		// add assistant message with tool calls if present
+		if len(response.ToolCalls) > 0 {
+			t.addAssistantMessageWithTools(response.Content, response.ToolCalls)
+		} else {
+			t.addAssistantMessage(response.Content)
+		}
 
 		if len(response.ToolCalls) == 0 {
+			// don't count as "no tools" if we just executed tools
+			t.mu.Lock()
+			justExecuted := t.justExecutedTools
+			if justExecuted {
+				t.justExecutedTools = false
+				log.Printf("Skipping no-tools handling because tools were just executed")
+			}
+			t.mu.Unlock()
+
+			if justExecuted {
+				continue
+			}
 			if shouldAbort := t.handleNoTools(); shouldAbort {
-				return errors.New("ai did not provide tool invocations after multiple attempts")
+				// instead of returning an error, try one final attempt to get completion
+				log.Printf("Final attempt to get completion after tool selection failure")
+				finalResponse, err := t.callAi()
+				if err == nil && len(finalResponse.ToolCalls) > 0 {
+					// if we got tools this time, execute them
+					done, err := t.executeTools(finalResponse.ToolCalls)
+					if err == nil && done {
+						return nil
+					}
+				}
+				// if still no tools or completion, finish gracefully
+				fmt.Println(ui.Info("Task completed with partial results due to tool selection difficulties."))
+				return nil
 			}
 			continue
 		}
@@ -151,6 +179,12 @@ func (t *Task) ProcessTask() error {
 			log.Printf("Tool execution error: %v", err)
 			continue
 		}
+
+		// mark that we just executed tools
+		t.mu.Lock()
+		t.justExecutedTools = true
+		log.Printf("Tools executed successfully, setting justExecutedTools flag")
+		t.mu.Unlock()
 
 		if done {
 			return nil
@@ -401,7 +435,8 @@ func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) 
 		}
 	}
 
-	t.addUserMessage(fmt.Sprintf("Result of %s: %s", call.Name, result))
+	// add tool result as tool response message for AI context
+	t.addToolResponse(call.Name, result)
 }
 
 // limitToolOutput truncates tool output if it's too verbose
@@ -442,6 +477,14 @@ func (t *Task) addAssistantMessage(content string) {
 	t.trimHistoryIfNeeded()
 }
 
+func (t *Task) addAssistantMessageWithTools(content string, toolCalls []entity.ToolCall) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.promptData.AddAssistantMessageWithTools(content, toolCalls)
+	t.trimHistoryIfNeeded()
+}
+
 func (t *Task) addUserMessage(message string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -450,9 +493,19 @@ func (t *Task) addUserMessage(message string) {
 	t.trimHistoryIfNeeded()
 }
 
+func (t *Task) addToolResponse(toolName, result string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// generate a consistent tool call ID based on tool name
+	toolCallID := fmt.Sprintf("call_%s", toolName)
+	t.promptData.AddToolResponse(toolCallID, result)
+	t.trimHistoryIfNeeded()
+}
+
 func (t *Task) trimHistoryIfNeeded() {
 	if len(t.promptData.Messages) > t.config.MaxHistorySize {
-		// cut half of MaxHistorySize from the start, but always keep the first message
+		// сut half of MaxHistorySize from the start, but always keep the first message
 		cut := len(t.promptData.Messages) / 2
 
 		if cut < 1 {
@@ -551,15 +604,32 @@ func (t *Task) handleNoTools() bool {
 	count := t.noToolCount
 	t.mu.Unlock()
 
-	// check if we've exceeded max attempts
-	if count >= t.config.MaxNoToolAttempts {
-		fmt.Println(ui.Warning("AI failed to use tools after multiple attempts. Aborting."))
-		return true
+	// progressive help strategy based on attempt count
+	switch {
+	case count <= 3:
+		// first few attempts: gentle reminder
+		fmt.Println(ui.Warning(fmt.Sprintf("⚠️  AI not using tools (attempt %d/%d). Providing gentle reminder...", count, t.config.MaxNoToolAttempts)))
+		t.forceToolUsage()
+		return false
+
+	case count <= 6:
+		// middle attempts: provide specific guidance
+		fmt.Println(ui.Warning(fmt.Sprintf("⚠️  AI struggling with tool selection (attempt %d/%d). Providing guidance...", count, t.config.MaxNoToolAttempts)))
+		t.provideToolGuidance()
+		return false
+
+	case count < t.config.MaxNoToolAttempts:
+		// near limit: try completion
+		fmt.Println(ui.Warning(fmt.Sprintf("⚠️  AI struggling with tool selection (attempt %d/%d). Suggesting completion...", count, t.config.MaxNoToolAttempts)))
+		t.suggestCompletion()
+		return false
+
+	default:
+		// final attempt: force completion and gracefully finish
+		fmt.Println(ui.Warning("⚠️  AI unable to use tools. Attempting graceful completion..."))
+		t.forceCompletion()
+		return true // This will end the task, but gracefully
 	}
-
-	t.forceToolUsage()
-
-	return false
 }
 
 func (t *Task) resetNoToolCount() {
@@ -572,6 +642,67 @@ func (t *Task) forceToolUsage() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.promptData.AddMessage("user", t.promptData.GetForceToolsMessage())
+}
+
+func (t *Task) provideToolGuidance() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// find the last assistant message to avoid referencing guidance messages
+	recentContent := ""
+	for i := len(t.promptData.Messages) - 1; i >= 0; i-- {
+		msg := t.promptData.Messages[i]
+		if msg.Role == "assistant" {
+			if len(msg.Content) > 100 {
+				recentContent = msg.Content[:100] + "..."
+			} else {
+				recentContent = msg.Content
+			}
+			break
+		}
+	}
+
+	guidance := fmt.Sprintf(`You seem to be having trouble selecting the right tool. Here's some guidance:
+
+Based on your recent response: "%s"
+
+Common tool selection patterns:
+- If you need to explore the project: use get_project_structure
+- If you need to read a specific file: use view with the file_path
+- If you need to search for something: use search_dir or find_files
+- If you need to run commands: use bash with the command
+- If you need to write/modify files: use write or multiedit
+- If you're done with the task: use attempt_completion
+
+Please select ONE appropriate tool and execute it now.`, recentContent)
+
+	t.promptData.AddMessage("user", guidance)
+}
+
+func (t *Task) suggestCompletion() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	message := `It seems you might be finished with the task. If you have completed what was requested, please use the attempt_completion tool to summarize what was accomplished.
+
+If you still need to do something, please specify exactly what tool you need to use next.
+
+Choose one:
+1. Use attempt_completion if the task is done
+2. Use a specific tool if more work is needed`
+
+	t.promptData.AddMessage("user", message)
+}
+
+func (t *Task) forceCompletion() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// create a fallback completion message
+	completion := "Task execution completed. The AI was unable to select appropriate tools after multiple attempts, but the conversation history shows the task progress."
+
+	// add this as a user message requesting completion
+	t.promptData.AddMessage("user", fmt.Sprintf("Please use attempt_completion tool with this summary: %s", completion))
 }
 
 func (t *Task) copyPromptData() entity.PromptData {
