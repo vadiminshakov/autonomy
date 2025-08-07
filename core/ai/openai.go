@@ -24,7 +24,7 @@ type OpenAIClient struct {
 // OpenAIFormatter formats prompts for OpenAI's chat completion API
 type OpenAIFormatter struct{}
 
-func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCompletionMessage {
+func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData, model string) []openai.ChatCompletionMessage {
 	messages := []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleSystem,
@@ -54,8 +54,22 @@ func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCom
 			var toolCalls []openai.ToolCall
 			for i, tc := range msg.ToolCalls {
 				argsJSON, _ := json.Marshal(tc.Args)
+				// use the existing ID if available, otherwise generate one
+				toolCallID := tc.ID
+				if toolCallID == "" {
+					// use toolu_ prefix for Anthropic Claude models, call_ for others
+					if strings.Contains(strings.ToLower(model), "claude") || strings.Contains(strings.ToLower(model), "anthropic") {
+						toolCallID = fmt.Sprintf("toolu_%s_%d", tc.Name, i)
+						log.Printf("DEBUG: Generated Claude-compatible tool call ID: %s", toolCallID)
+					} else {
+						toolCallID = fmt.Sprintf("call_%d", i)
+						log.Printf("DEBUG: Generated standard tool call ID: %s", toolCallID)
+					}
+				} else {
+					log.Printf("DEBUG: Using existing tool call ID: %s", toolCallID)
+				}
 				toolCalls = append(toolCalls, openai.ToolCall{
-					ID:   fmt.Sprintf("call_%d", i),
+					ID:   toolCallID,
 					Type: "function",
 					Function: openai.FunctionCall{
 						Name:      tc.Name,
@@ -71,6 +85,8 @@ func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCom
 			})
 		} else if msg.Role == "tool" {
 			// handle tool response messages
+			log.Printf("DEBUG: Formatting tool response - ToolCallID: %s, Content length: %d",
+				msg.ToolCallID, len(msg.Content))
 			messages = append(messages, openai.ChatCompletionMessage{
 				Role:       role,
 				Content:    msg.Content,
@@ -94,6 +110,9 @@ func NewOpenAI(cfg config.Config) (*OpenAIClient, error) {
 
 	client := openai.NewClientWithConfig(clientConfig)
 
+	log.Printf("DEBUG: Creating OpenAI client - Provider: %s, Model: %s, BaseURL: %s",
+		cfg.Provider, cfg.Model, cfg.BaseURL)
+
 	return &OpenAIClient{
 		client: client,
 		model:  cfg.Model,
@@ -105,8 +124,11 @@ func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.Promp
 }
 
 func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
+	// set model for provider-specific formatting
+	promptData.Model = o.model
+	
 	formatter := &OpenAIFormatter{}
-	messages := formatter.FormatPrompt(&promptData)
+	messages := formatter.FormatPrompt(&promptData, o.model)
 
 	// attach structured tool definitions
 	tools := convertTools(promptData.Tools)
@@ -129,7 +151,7 @@ func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity
 		Model:     model,
 		Messages:  messages,
 		Tools:     tools,
-		MaxTokens: 16000,
+		MaxTokens: 8000,
 	}
 
 	if len(tools) > 0 {
@@ -189,13 +211,24 @@ func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity
 
 	if len(choice.Message.ToolCalls) > 0 {
 		var toolCalls []entity.ToolCall
-		for _, tc := range choice.Message.ToolCalls {
+		for i, tc := range choice.Message.ToolCalls {
 			var argObj map[string]any
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &argObj); err != nil {
 				argObj = map[string]any{"raw": tc.Function.Arguments}
 			}
 
+			// ensure Claude-compatible tool call ID format
+			toolCallID := tc.ID
+			if strings.Contains(strings.ToLower(model), "claude") || strings.Contains(strings.ToLower(model), "anthropic") {
+				// if Claude returned a non-toolu_ ID, fix it
+				if !strings.HasPrefix(toolCallID, "toolu_") {
+					toolCallID = fmt.Sprintf("toolu_%s_%d", tc.Function.Name, i)
+					log.Printf("DEBUG: Fixed Claude tool call ID from %s to %s", tc.ID, toolCallID)
+				}
+			}
+
 			toolCalls = append(toolCalls, entity.ToolCall{
+				ID:   toolCallID,
 				Name: tc.Function.Name,
 				Args: argObj,
 			})
@@ -292,7 +325,7 @@ func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*e
 		Content   string `json:"content"`
 		ToolCalls []struct {
 			Name string                 `json:"name"`
-			Args map[string]interface{} `json:"args"`
+			Args map[string]any `json:"args"`
 		} `json:"tool_calls"`
 	}
 
@@ -328,7 +361,7 @@ func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*e
 }
 
 // convertToOpenAIToolChoice converts general tool choice mode to OpenAI format
-func convertToOpenAIToolChoice(mode ToolChoiceMode) interface{} {
+func convertToOpenAIToolChoice(mode ToolChoiceMode) any {
 	switch mode {
 	case ToolChoiceModeAuto:
 		return "auto"
