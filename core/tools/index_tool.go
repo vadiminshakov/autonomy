@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,7 +9,6 @@ import (
 
 func init() {
 	Register("search_index", searchIndex)
-	Register("get_index_stats", getIndexStats)
 	Register("get_function", getFunction)
 	Register("get_type", getType)
 	Register("get_package_info", getPackageInfo)
@@ -82,14 +80,6 @@ func searchIndex(args map[string]any) (string, error) {
 	}
 
 	return results.String(), nil
-}
-
-func getIndexStats(args map[string]any) (string, error) {
-	manager := index.GetIndexManager()
-	stats := manager.GetStats()
-	statsJSON, _ := json.MarshalIndent(stats, "", "  ")
-
-	return fmt.Sprintf("Universal index statistics:\n%s", string(statsJSON)), nil
 }
 
 func getFunction(args map[string]any) (string, error) {
