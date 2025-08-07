@@ -113,6 +113,7 @@ DECOMPOSITION RULES:
 6. Start with analysis/understanding steps before making changes
 7. End with validation/testing steps when appropriate
 8. Avoid over-decomposition - keep steps meaningful and substantial
+9. NEVER use "decompose_task" tool in steps - this causes infinite recursion
 
 OUTPUT FORMAT:
 Provide your response as a JSON object with this structure:
@@ -187,6 +188,10 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 		}
 		if step.Tool == "" {
 			return nil, fmt.Errorf("step %s missing tool", step.ID)
+		}
+		// prevent recursion by rejecting decompose_task steps
+		if step.Tool == "decompose_task" {
+			return nil, fmt.Errorf("step %s uses forbidden tool 'decompose_task' - this would cause recursion", step.ID)
 		}
 		if step.Args == nil {
 			step.Args = make(map[string]interface{})
