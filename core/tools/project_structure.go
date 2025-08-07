@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const maxDepth = 10 // maximum depth for project structure tree
+
 func init() {
 	Register("get_project_structure", GetProjectStructure)
 }
@@ -95,7 +97,7 @@ func GetProjectStructure(args map[string]interface{}) (string, error) {
 
 	sb.WriteString(fmt.Sprintf("%s/\n", filepath.Base(absRoot)))
 
-	err = buildTreeWithStatsLimited(root, "", sb, ignorePatterns, stats, 0, maxDepth)
+	err = buildTreeWithStats(root, "", sb, ignorePatterns, stats, 0, maxDepth)
 	if err != nil {
 		return "", fmt.Errorf("failed to build project structure: %v", err)
 	}

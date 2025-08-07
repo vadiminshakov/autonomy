@@ -22,11 +22,21 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("parameter 'task_description' must be a non-empty string")
 	}
 
-	// Check if we already have a decomposed task to prevent repeated planning
+	// check if we already have a decomposed task to prevent repeated planning
 	state := getTaskState()
 	if hasTask, exists := state.GetContext("has_decomposed_task"); exists && hasTask == true {
-		return "", fmt.Errorf("task already decomposed - use existing plan or clear first")
+		return "Task already decomposed - use existing plan or clear first", nil
 	}
+	
+	// additional protection: prevent recursive calls by checking task depth
+	if depth, exists := state.GetContext("decomposition_depth"); exists {
+		if d, ok := depth.(int); ok && d > 0 {
+			return "Decomposition already in progress - preventing recursion", nil
+		}
+	}
+	
+	// set decomposition depth to prevent recursion
+	state.SetContext("decomposition_depth", 1)
 
 	cfg, err := config.LoadConfigFile()
 	if err != nil {
@@ -52,6 +62,8 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 	taskState.SetContext("has_decomposed_task", true)
 	taskState.SetContext("decomposed_task", result)
 	taskState.SetContext("has_execution_plan", true)
+	// clear decomposition depth flag
+	taskState.SetContext("decomposition_depth", 0)
 
 	toolCalls := result.ConvertToToolCalls()
 
@@ -63,6 +75,8 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 
 	planJSON, err := json.Marshal(planData)
 	if err != nil {
+		// clear decomposition depth on error too
+		taskState.SetContext("decomposition_depth", 0)
 		return "", fmt.Errorf("failed to serialize plan: %v", err)
 	}
 
@@ -106,6 +120,7 @@ func ClearDecomposedTask() {
 	state := getTaskState()
 	state.SetContext("has_decomposed_task", false)
 	state.SetContext("decomposed_task", nil)
+	state.SetContext("decomposition_depth", 0)
 }
 
 // getAvailableToolDefinitions returns tool definitions for all registered tools

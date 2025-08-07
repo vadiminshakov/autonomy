@@ -10,8 +10,7 @@ var silentTools = map[string]bool{
 	"read_file":               true,
 	"write_file":              true,
 	"get_project_structure":   true,
-	"search_dir":              true,
-	"find_files":              true,
+	"grep":                   true,
 	"dependency_analyzer":     true,
 	"go_vet":                  true,
 	"fix_validation_errors":   true,
@@ -50,31 +49,18 @@ func silentToolSummary(toolName string, args map[string]any, result string) stri
 
 		return fmt.Sprintf(" - project structure (%d items)", lines)
 
-	case "search_dir":
-		if strings.Contains(result, "no matches found") {
+	case "grep":
+		if strings.Contains(result, "No matches found") {
 			return " - no matches found"
 		}
 
 		for _, line := range strings.Split(result, "\n") {
-			if strings.Contains(line, "Found") && strings.Contains(line, "matches") {
+			if strings.Contains(line, "Found") && (strings.Contains(line, "matches") || strings.Contains(line, "files")) {
 				return " - " + strings.ToLower(line)
 			}
 		}
 
 		return " - search completed"
-
-	case "find_files":
-		if strings.Contains(result, "no files found") {
-			return " - no files found"
-		}
-
-		for _, line := range strings.Split(result, "\n") {
-			if strings.Contains(line, "Found") && strings.Contains(line, "files") {
-				return " - " + strings.ToLower(line)
-			}
-		}
-
-		return " - file search completed"
 
 	case "dependency_analyzer":
 		return " - dependency analysis done"
