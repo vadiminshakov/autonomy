@@ -100,7 +100,7 @@ func (c *AnthropicClient) GenerateCode(ctx context.Context, pd entity.PromptData
 
 	params := anthropic.MessageNewParams{
 		Model:     model,
-		MaxTokens: 16000,
+		MaxTokens: 8000,
 		Messages:  msgs,
 		Tools:     anthropicTools,
 		System: []anthropic.TextBlockParam{{
