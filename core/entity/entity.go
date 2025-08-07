@@ -1,5 +1,10 @@
 package entity
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Message represents a conversation entry
 // It is used across the project to store chat history.
 type Message struct {
@@ -21,6 +26,7 @@ type PromptData struct {
 	SystemPrompt string
 	Messages     []Message
 	Tools        []ToolDefinition
+	Model        string
 }
 
 // AddMessage appends a new chat message.
@@ -30,8 +36,18 @@ func (p *PromptData) AddMessage(role, content string) {
 
 // AddAssistantMessageWithTools appends an assistant message with tool calls.
 func (p *PromptData) AddAssistantMessageWithTools(content string, toolCalls []ToolCall) {
+	for i := range toolCalls {
+		if toolCalls[i].ID == "" {
+			// use toolu_ prefix for Anthropic Claude models, call_ for others
+			if strings.Contains(strings.ToLower(p.Model), "claude") || strings.Contains(strings.ToLower(p.Model), "anthropic") {
+				toolCalls[i].ID = fmt.Sprintf("toolu_%s_%d", toolCalls[i].Name, i)
+			} else {
+				toolCalls[i].ID = fmt.Sprintf("call_%d", i)
+			}
+		}
+	}
 	p.Messages = append(p.Messages, Message{
-		Role:      "assistant", 
+		Role:      "assistant",
 		Content:   content,
 		ToolCalls: toolCalls,
 	})
@@ -54,8 +70,7 @@ Available tools:
 - view: read a specific file with line numbers
 - write: create or modify files
 - multiedit: make multiple edits to a single file
-- search_dir: search for patterns in files
-- find_files: find files by name/pattern
+- grep: universal search for patterns in files and filenames
 - bash: run shell commands
 - diagnostics: run code analysis and linting
 - attempt_completion: finish the task
@@ -69,6 +84,7 @@ func (p *PromptData) GetForceToolsMessage() string {
 
 // ToolCall describes a tool invocation requested by the LLM.
 type ToolCall struct {
+	ID   string         `json:"id,omitempty"`
 	Name string         `json:"name"`
 	Args map[string]any `json:"args"`
 }
