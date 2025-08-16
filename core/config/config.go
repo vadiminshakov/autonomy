@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/manifoldco/promptui"
+	"github.com/vadiminshakov/autonomy/core/entity"
 )
 
 const (
@@ -21,13 +22,16 @@ const (
 )
 
 type Config struct {
-	APIKey   string `json:"api_key"`
-	BaseURL  string `json:"base_url"`
-	Model    string `json:"model"`
-	Provider string `json:"provider"`
+	APIKey       string                  `json:"api_key"`
+	BaseURL      string                  `json:"base_url"`
+	Model        string                  `json:"model"`
+	Provider     string                  `json:"provider"`
+	MaxTokens    int                     `json:"max_tokens,omitempty"`
+	Temperature  float64                 `json:"temperature,omitempty"`
+	UseAuthToken bool                    `json:"use_auth_token,omitempty"`
+	Tools        []entity.ToolDefinition `json:"tools,omitempty"`
 }
 
-// configFilePath builds the path to ~/.autonomy/config.json.
 func configFilePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -36,8 +40,6 @@ func configFilePath() (string, error) {
 	return filepath.Join(home, configDirName, configFileName), nil
 }
 
-// LoadConfigFile reads configuration from ~/.autonomy/config.json.
-// Returns an error if the file does not exist or cannot be parsed.
 func LoadConfigFile() (Config, error) {
 	var cfg Config
 
@@ -59,7 +61,6 @@ func LoadConfigFile() (Config, error) {
 	return cfg, nil
 }
 
-// saveConfigFile writes the provided configuration to ~/.autonomy/config.json.
 func saveConfigFile(cfg Config) error {
 	path, err := configFilePath()
 	if err != nil {
@@ -81,14 +82,7 @@ func saveConfigFile(cfg Config) error {
 	return enc.Encode(cfg)
 }
 
-// InteractiveSetup launches a CLI wizard to collect configuration from the user
-// and saves the result to ~/.autonomy/config.json.
-//
-//nolint:gocyclo
 func InteractiveSetup() (Config, error) {
-	fmt.Println("🔧 Initial configuration (Autonomy)")
-
-	// Step 1: choose config type (cloud vs local)
 	configTypes := []string{"cloud", "local"}
 	typeSel := promptui.Select{
 		Label: "Select configuration type",
@@ -103,7 +97,6 @@ func InteractiveSetup() (Config, error) {
 
 	switch typeChoice {
 	case "cloud":
-		// Provider selection
 		providers := []string{"openai", "anthropic", "openrouter"}
 		provSel := promptui.Select{
 			Label: "Select cloud provider",
@@ -115,17 +108,14 @@ func InteractiveSetup() (Config, error) {
 		}
 		cfg.Provider = provChoice
 
-		// API key
 		key, err := readInput("Enter API key: ")
 		if err != nil {
 			return cfg, err
 		}
 		cfg.APIKey = strings.TrimSpace(key)
 
-		// base URL handling
 		if cfg.Provider == "openrouter" {
 			cfg.BaseURL = defaultOpenRouterURL
-			fmt.Printf("Base URL set to %s\n", defaultOpenRouterURL)
 		} else {
 			defaultURL := defaultOpenAIURL
 			if cfg.Provider == "anthropic" {
@@ -142,13 +132,11 @@ func InteractiveSetup() (Config, error) {
 			}
 			cfg.BaseURL = strings.TrimSpace(bu)
 
-			// ensure default URL is set if user left the input blank
 			if cfg.BaseURL == "" {
 				cfg.BaseURL = defaultURL
 			}
 		}
 
-		// model selection
 		var modelOptions []string
 		switch cfg.Provider {
 		case "openai":
@@ -190,10 +178,8 @@ func InteractiveSetup() (Config, error) {
 		}
 
 	case "local":
-		// local model / OpenAI-compatible API
 		cfg.Provider = "openai"
 
-		// base URL
 		urlPrompt := promptui.Prompt{
 			Label: "Enter Base URL (e.g., http://localhost:11434/v1)",
 		}
@@ -203,14 +189,12 @@ func InteractiveSetup() (Config, error) {
 		}
 		cfg.BaseURL = strings.TrimSpace(bu)
 
-		// API key (optional)
 		key, err := readInput("Enter API key (leave blank if not required): ")
 		if err != nil {
 			return cfg, err
 		}
 		cfg.APIKey = strings.TrimSpace(key)
 
-		// model name (optional)
 		modelPrompt := promptui.Prompt{
 			Label: "Enter model name (optional)",
 		}
@@ -232,12 +216,9 @@ func InteractiveSetup() (Config, error) {
 		return cfg, err
 	}
 
-	fmt.Println("Configuration saved to ~/.autonomy/config.json ✅")
-
 	return cfg, nil
 }
 
-// readInput reads input from terminal
 func readInput(prompt string) (string, error) {
 	fmt.Print(prompt)
 	reader := bufio.NewReader(os.Stdin)
@@ -248,19 +229,15 @@ func readInput(prompt string) (string, error) {
 	return strings.TrimSpace(input), nil
 }
 
-// HasValidCredentials checks if the config has valid credentials
 func (c *Config) HasValidCredentials() bool {
 	return c.APIKey != "" || c.BaseURL != ""
 }
 
-// IsLocalModel checks if the config is for a local model
 func (c *Config) IsLocalModel() bool {
 	return c.BaseURL != "" && (c.APIKey == "" || c.APIKey == "EMPTY")
 }
 
-// Validate validates the configuration and applies necessary fixes
 func (c *Config) Validate() error {
-	// auto-set a dummy API key only for truly local OpenAI-compatible setups
 	if c.Provider == "openai" && c.IsLocalModel() && c.APIKey == "" {
 		c.APIKey = "local-api-key"
 	}

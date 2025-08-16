@@ -4,337 +4,213 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
 	"strings"
 
-	openai "github.com/sashabaranov/go-openai"
-
+	"github.com/sashabaranov/go-openai"
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
-	mcpClient "github.com/vadiminshakov/autonomy/core/mcp/client"
-	"github.com/vadiminshakov/autonomy/pkg/retry"
 )
 
-type OpenAIClient struct {
-	client *openai.Client
-	model  string
+type OpenAICompatibleHandler struct {
+	*BaseProvider
+	client       *openai.Client
+	config       config.Config
+	providerName string
 }
 
-// OpenAIFormatter formats prompts for OpenAI's chat completion API
-type OpenAIFormatter struct{}
-
-func (f *OpenAIFormatter) FormatPrompt(data *entity.PromptData) []openai.ChatCompletionMessage {
-	messages := []openai.ChatCompletionMessage{
-		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: data.SystemPrompt,
-		},
+func NewOpenAICompatibleProvider(cfg config.Config, providerName string) *OpenAICompatibleHandler {
+	var providerType ProviderType
+	switch strings.ToLower(providerName) {
+	case "openai":
+		providerType = ProviderTypeOpenAI
+	case "openrouter":
+		providerType = ProviderTypeOpenRouter
+	case "groq":
+		providerType = ProviderTypeGroq
+	case "deepseek":
+		providerType = ProviderTypeDeepSeek
+	case "local":
+		providerType = ProviderTypeLocal
+	default:
+		providerType = ProviderTypeOpenAI
 	}
 
-	for _, msg := range data.Messages {
-		if msg.Content == "" && len(msg.ToolCalls) == 0 {
-			continue
-		}
+	capabilities := ProviderCapabilities{
+		Tools:         true,
+		Images:        providerType == ProviderTypeOpenAI,
+		SystemPrompts: true,
+	}
 
-		var role string
+	baseURL := cfg.BaseURL
+	if baseURL == "" {
+		switch providerType {
+		case ProviderTypeOpenAI:
+			baseURL = "https://api.openai.com/v1"
+		case ProviderTypeOpenRouter:
+			baseURL = "https://openrouter.ai/api/v1"
+		case ProviderTypeGroq:
+			baseURL = "https://api.groq.com/openai/v1"
+		case ProviderTypeDeepSeek:
+			baseURL = "https://api.deepseek.com"
+		}
+	}
+
+	baseProvider := NewRouterProvider(providerType, capabilities, baseURL, cfg.APIKey, cfg.Model)
+
+	clientConfig := openai.DefaultConfig(cfg.APIKey)
+	if baseURL != "" {
+		clientConfig.BaseURL = baseURL
+	}
+
+	return &OpenAICompatibleHandler{
+		BaseProvider: baseProvider,
+		client:       openai.NewClientWithConfig(clientConfig),
+		config:       cfg,
+		providerName: providerName,
+	}
+}
+
+
+func (h *OpenAICompatibleHandler) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
+	systemPrompt := promptData.SystemPrompt
+	if len(promptData.Tools) > 0 {
+		systemPrompt += "\n\nyou can and should use tools to complete the task. " +
+			"when you decide to use a tool, respond with a json object with a 'tool_calls' array. " +
+			"each entry must have { name, args }. example: {\\n  \"tool_calls\": [ { \"name\": \"search_dir\", \"args\": { \"pattern\": \"TODO\" } } ]\\n}\\n" +
+			"if no tools are needed, just respond with plain text."
+	}
+
+	promptText := systemPrompt + "\n\n"
+	for _, msg := range promptData.Messages {
 		switch msg.Role {
 		case "user":
-			role = openai.ChatMessageRoleUser
+			promptText += fmt.Sprintf("User: %s\n", msg.Content)
 		case "assistant":
-			role = openai.ChatMessageRoleAssistant
+			if len(msg.ToolCalls) > 0 {
+				promptText += fmt.Sprintf("Assistant: %s\n", msg.Content)
+				for _, call := range msg.ToolCalls {
+					argsStr := ""
+					if call.Args != nil && len(call.Args) > 0 {
+						args := make([]string, 0, len(call.Args))
+						for k, v := range call.Args {
+							if k != "_enhanced_metadata" {
+								args = append(args, fmt.Sprintf("%s: %v", k, v))
+							}
+						}
+						if len(args) > 0 {
+							argsStr = " (" + strings.Join(args, ", ") + ")"
+						}
+					}
+					promptText += fmt.Sprintf("Tool call: %s%s\n", call.Name, argsStr)
+				}
+			} else {
+				promptText += fmt.Sprintf("Assistant: %s\n", msg.Content)
+			}
 		case "tool":
-			role = openai.ChatMessageRoleTool
+			promptText += fmt.Sprintf("Tool result: %s\n", msg.Content)
 		default:
-			role = openai.ChatMessageRoleUser
-		}
-
-		// handle assistant messages with tool calls
-		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-			var toolCalls []openai.ToolCall
-			for i, tc := range msg.ToolCalls {
-				argsJSON, _ := json.Marshal(tc.Args)
-				toolCalls = append(toolCalls, openai.ToolCall{
-					ID:   fmt.Sprintf("call_%d", i),
-					Type: "function",
-					Function: openai.FunctionCall{
-						Name:      tc.Name,
-						Arguments: string(argsJSON),
-					},
-				})
-			}
-			
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:      role,
-				Content:   msg.Content,
-				ToolCalls: toolCalls,
-			})
-		} else if msg.Role == "tool" {
-			// handle tool response messages
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:       role,
-				Content:    msg.Content,
-				ToolCallID: msg.ToolCallID,
-			})
-		} else {
-			// handle regular messages
-			messages = append(messages, openai.ChatCompletionMessage{
-				Role:    role,
-				Content: msg.Content,
-			})
+			promptText += fmt.Sprintf("%s: %s\n", msg.Role, msg.Content)
 		}
 	}
 
-	return messages
-}
-
-func NewOpenAI(cfg config.Config) (*OpenAIClient, error) {
-	clientConfig := openai.DefaultConfig(cfg.APIKey)
-	clientConfig.BaseURL = cfg.BaseURL
-
-	client := openai.NewClientWithConfig(clientConfig)
-
-	return &OpenAIClient{
-		client: client,
-		model:  cfg.Model,
-	}, nil
-}
-
-func (o *OpenAIClient) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
-	return o.generateCodeDirect(ctx, promptData)
-}
-
-func (o *OpenAIClient) generateCodeDirect(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
-	formatter := &OpenAIFormatter{}
-	messages := formatter.FormatPrompt(&promptData)
-
-	// attach structured tool definitions
-	tools := convertTools(promptData.Tools)
-
-	model := o.model
-	if model == "" {
-		model = "o3"
-	}
-
-	// determine the last user message for analysis
-	var lastUserMessage string
-	for i := len(promptData.Messages) - 1; i >= 0; i-- {
-		if promptData.Messages[i].Role == "user" && promptData.Messages[i].Content != "" {
-			lastUserMessage = promptData.Messages[i].Content
-			break
-		}
-	}
-
-	req := openai.ChatCompletionRequest{
-		Model:     model,
-		Messages:  messages,
-		Tools:     tools,
-		MaxTokens: 16000,
-	}
-
-	if len(tools) > 0 {
-		toolChoiceMode := DetermineToolChoiceMode(lastUserMessage)
-		toolChoice := convertToOpenAIToolChoice(toolChoiceMode)
-		req.ToolChoice = toolChoice
-		
-		// Debug logging for tool choice decisions
-		log.Printf("OpenAI API: Tool choice mode=%d, choice=%v, last_user_msg='%s'",
-			toolChoiceMode, toolChoice, lastUserMessage)
-	}
-
-	var resp openai.ChatCompletionResponse
-	var err error
-
-	if err = retry.Exponential(ctx, func() error {
-		resp, err = o.client.CreateChatCompletion(ctx, req)
-		return err
-	}, func(e error) bool {
-		apiErr, ok := e.(*openai.APIError)
-		return ok && apiErr.HTTPStatusCode == http.StatusTooManyRequests
-	}); err != nil {
-		// try JSON fallback for HTTP 400
-		if apiErr, ok := err.(*openai.APIError); ok && apiErr.HTTPStatusCode == http.StatusBadRequest {
-			// Use MCP format in fallback for models that understand it
-			messagesWithMCP := o.buildMCPPrompt(messages, promptData.Tools)
-			reqWithoutTools := openai.ChatCompletionRequest{
-				Model:     model,
-				Messages:  messagesWithMCP,
-				MaxTokens: 8000,
-			}
-
-			var fallbackResp openai.ChatCompletionResponse
-
-			if err = retry.Exponential(ctx, func() error {
-				fallbackResp, err = o.client.CreateChatCompletion(ctx, reqWithoutTools)
-				return err
-			}, func(e error) bool {
-				apiErr, ok := e.(*openai.APIError)
-				return ok && apiErr.HTTPStatusCode == http.StatusTooManyRequests
-			}); err != nil {
-				return nil, err
-			}
-
-			return o.parseJSONResponse(fallbackResp)
-		}
-
+	response, err := h.CompletePrompt(ctx, promptText)
+	if err != nil {
 		return nil, err
 	}
 
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response choices - model: %s, response ID: %s, usage: %+v", 
-			model, resp.ID, resp.Usage)
+	var parsed struct {
+		Content   string            `json:"content"`
+		ToolCalls []entity.ToolCall `json:"tool_calls"`
 	}
 
-	choice := resp.Choices[0]
-
-	if len(choice.Message.ToolCalls) > 0 {
-		var toolCalls []entity.ToolCall
-		for _, tc := range choice.Message.ToolCalls {
-			var argObj map[string]any
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &argObj); err != nil {
-				argObj = map[string]any{"raw": tc.Function.Arguments}
-			}
-
-			toolCalls = append(toolCalls, entity.ToolCall{
-				Name: tc.Function.Name,
-				Args: argObj,
-			})
+	extractJSON := func(s string) string {
+		start := strings.IndexByte(s, '{')
+		end := strings.LastIndexByte(s, '}')
+		if start >= 0 && end > start {
+			return s[start : end+1]
 		}
-
-		return &entity.AIResponse{
-			Content:   choice.Message.Content,
-			ToolCalls: toolCalls,
-		}, nil
+		return ""
 	}
 
-	return &entity.AIResponse{
-		Content: choice.Message.Content,
-	}, nil
-}
-
-// buildMCPPrompt creates a system message with MCP tools information
-// that models can understand as available tools in Model Context Protocol format.
-// This provides a fallback mechanism for models that understand MCP but don't
-// support native OpenAI function calling.
-func (o *OpenAIClient) buildMCPPrompt(
-	messages []openai.ChatCompletionMessage,
-	tools []entity.ToolDefinition,
-) []openai.ChatCompletionMessage {
-	if len(tools) == 0 {
-		return messages
-	}
-
-	// convert tools to MCP format
-	mcpTools := mcpClient.ConvertToMCPTools(tools)
-
-	// create simple JSON representation
-	toolsJSON, err := json.MarshalIndent(mcpTools, "", "  ")
-	if err != nil {
-		return messages
-	}
-
-	// create system message with MCP tools and response format instructions
-	fallbackSystemPrompt := fmt.Sprintf(`Available tools in Model Context Protocol format:
-
-%s
-
-When you need to use tools, respond with a JSON object in this exact format:
-{
-  "content": "your response text here",
-  "tool_calls": [
-    {
-      "name": "tool_name",
-      "args": {"param1": "value1", "param2": "value2"}
-    }
-  ]
-}
-
-If you don't need to use any tools, just respond normally with plain text.`, string(toolsJSON))
-
-	systemMsg := openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleSystem,
-		Content: fallbackSystemPrompt,
-	}
-
-	newMsgs := []openai.ChatCompletionMessage{systemMsg}
-	newMsgs = append(newMsgs, messages...)
-	return newMsgs
-}
-
-func convertTools(tools []entity.ToolDefinition) []openai.Tool {
-	defs := make([]openai.Tool, 0, len(tools))
-	for _, t := range tools {
-		params, _ := json.Marshal(t.InputSchema)
-
-		defs = append(defs, openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  json.RawMessage(params),
-			},
-		})
-	}
-	return defs
-}
-
-// parseJSONResponse parses the model response for JSON with tool calls
-func (o *OpenAIClient) parseJSONResponse(resp openai.ChatCompletionResponse) (*entity.AIResponse, error) {
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response choices in parseJSONResponse - response ID: %s, usage: %+v", 
-			resp.ID, resp.Usage)
-	}
-
-	choice := resp.Choices[0]
-	content := choice.Message.Content
-
-	var jsonResponse struct {
-		Content   string `json:"content"`
-		ToolCalls []struct {
-			Name string                 `json:"name"`
-			Args map[string]interface{} `json:"args"`
-		} `json:"tool_calls"`
-	}
-
-	// try to find JSON block in the response
-	jsonStart := strings.Index(content, "{")
-	jsonEnd := strings.LastIndex(content, "}")
-
-	if jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart {
-		jsonStr := content[jsonStart : jsonEnd+1]
-		if err := json.Unmarshal([]byte(jsonStr), &jsonResponse); err == nil {
-			// successfully parsed JSON with tool calls
-			if len(jsonResponse.ToolCalls) > 0 {
-				var toolCalls []entity.ToolCall
-				for _, tc := range jsonResponse.ToolCalls {
-					toolCalls = append(toolCalls, entity.ToolCall{
-						Name: tc.Name,
-						Args: tc.Args,
-					})
+	tryParse := func(s string) ([]entity.ToolCall, string, bool) {
+		if err := json.Unmarshal([]byte(s), &parsed); err == nil && len(parsed.ToolCalls) > 0 {
+			for i := range parsed.ToolCalls {
+				if parsed.ToolCalls[i].Name == "" {
+					parsed.ToolCalls[i].Name = parsed.ToolCalls[i].Function.Name
 				}
-
-				return &entity.AIResponse{
-					Content:   jsonResponse.Content,
-					ToolCalls: toolCalls,
-				}, nil
+				if parsed.ToolCalls[i].Arguments == "" && parsed.ToolCalls[i].Function.Arguments != "" {
+					parsed.ToolCalls[i].Arguments = parsed.ToolCalls[i].Function.Arguments
+				}
 			}
+			return parsed.ToolCalls, parsed.Content, true
+		}
+		return nil, "", false
+	}
+
+	if calls, content, ok := tryParse(response); ok {
+		return &entity.AIResponse{Content: content, ToolCalls: calls}, nil
+	}
+	if jsonStr := extractJSON(response); jsonStr != "" {
+		if calls, content, ok := tryParse(jsonStr); ok {
+			return &entity.AIResponse{Content: content, ToolCalls: calls}, nil
 		}
 	}
 
-	// if we couldn't find JSON with tool calls, return as a regular response
-	return &entity.AIResponse{
-		Content: content,
-	}, nil
+	return &entity.AIResponse{Content: response}, nil
 }
 
-// convertToOpenAIToolChoice converts general tool choice mode to OpenAI format
-func convertToOpenAIToolChoice(mode ToolChoiceMode) interface{} {
-	switch mode {
-	case ToolChoiceModeAuto:
-		return "auto"
-	case ToolChoiceModeAny:
-		return "required"  // OpenAI uses "required" to force tool usage
-	default:
-		return "auto"
+func (h *OpenAICompatibleHandler) CompletePrompt(ctx context.Context, prompt string) (string, error) {
+	if err := h.validateContext(ctx); err != nil {
+		return "", err
+	}
+
+	modelInfo := h.GetModel()
+
+	req := openai.ChatCompletionRequest{
+		Model: modelInfo.ID,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleUser, Content: prompt},
+		},
+		MaxTokens:   modelInfo.MaxTokens,
+		Temperature: float32(modelInfo.Temperature),
+	}
+
+	resp, err := h.client.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("%s completion error: %w", h.providerName, err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("%s returned no choices", h.providerName)
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}
+
+func (h *OpenAICompatibleHandler) GetModel() ModelInfo {
+	modelID := h.config.Model
+	if modelID == "" {
+		modelID = h.defaultModel
+	}
+
+	maxTokens := 4096
+	if h.config.MaxTokens > 0 {
+		maxTokens = h.config.MaxTokens
+	}
+
+	temperature := 1.0
+	if h.config.Temperature >= 0 {
+		temperature = h.config.Temperature
+	}
+
+	return ModelInfo{
+		ID:                   modelID,
+		MaxTokens:            maxTokens,
+		Temperature:          temperature,
+		ContextWindow:        128000,
+		SupportsImages:       h.GetCapabilities().Images,
+		SupportsTools:        h.GetCapabilities().Tools,
+		SupportsSystemPrompt: h.GetCapabilities().SystemPrompts,
+		Description:          fmt.Sprintf("%s model", h.providerName),
 	}
 }
