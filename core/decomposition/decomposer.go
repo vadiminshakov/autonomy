@@ -11,12 +11,6 @@ import (
 	"github.com/vadiminshakov/autonomy/core/entity"
 )
 
-// AIClient interface for generating AI responses
-type AIClient interface {
-	GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error)
-}
-
-// TaskStep represents a single step in task decomposition
 type TaskStep struct {
 	ID           string                 `json:"id"`
 	Description  string                 `json:"description"`
@@ -26,32 +20,18 @@ type TaskStep struct {
 	Dependencies []string               `json:"dependencies,omitempty"`
 }
 
-// DecompositionResult contains the result of task decomposition
 type DecompositionResult struct {
 	OriginalTask string     `json:"original_task"`
 	Steps        []TaskStep `json:"steps"`
 	Reasoning    string     `json:"reasoning"`
 }
 
-// TaskDecomposer breaks down complex tasks into executable steps
 type TaskDecomposer struct {
-	aiClient AIClient
+	aiClient ai.AIClient
 }
 
-// NewTaskDecomposer creates a new task decomposer
 func NewTaskDecomposer(cfg config.Config) (*TaskDecomposer, error) {
-	var client AIClient
-	var err error
-
-	switch cfg.Provider {
-	case "anthropic":
-		client, err = ai.NewAnthropic(cfg)
-	case "openai", "openrouter":
-		client, err = ai.NewOpenAI(cfg)
-	default:
-		client, err = ai.NewOpenAI(cfg) // default to OpenAI
-	}
-
+	client, err := ai.ProvideAiClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AI client: %v", err)
 	}
@@ -61,7 +41,6 @@ func NewTaskDecomposer(cfg config.Config) (*TaskDecomposer, error) {
 	}, nil
 }
 
-// DecomposeTask breaks down a complex task into executable steps
 func (td *TaskDecomposer) DecomposeTask(
 	ctx context.Context,
 	taskDescription string,
@@ -74,7 +53,6 @@ func (td *TaskDecomposer) DecomposeTask(
 		return nil, fmt.Errorf("failed to get AI response: %v", err)
 	}
 
-	// parse the response to extract steps
 	result, err := td.parseDecompositionResponse(response.Content, taskDescription)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse decomposition response: %v", err)
@@ -83,7 +61,6 @@ func (td *TaskDecomposer) DecomposeTask(
 	return result, nil
 }
 
-// buildToolsList creates a formatted list of available tools from ToolDefinitions
 func (td *TaskDecomposer) buildToolsList(tools []entity.ToolDefinition) string {
 	var toolsList strings.Builder
 
@@ -94,9 +71,6 @@ func (td *TaskDecomposer) buildToolsList(tools []entity.ToolDefinition) string {
 	return toolsList.String()
 }
 
-// buildDecompositionPrompt creates a prompt for task decomposition
-//
-//nolint:lll
 func (td *TaskDecomposer) buildDecompositionPrompt(taskDescription string, availableTools []entity.ToolDefinition) entity.PromptData {
 	toolsList := td.buildToolsList(availableTools)
 	systemPrompt := fmt.Sprintf(`You are a task decomposition expert. Your job is to break down complex programming tasks into specific, executable steps.
@@ -148,7 +122,6 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 	// Clean the response - remove any markdown formatting
 	content = strings.TrimSpace(content)
 
-	// Remove markdown code blocks
 	if strings.HasPrefix(content, "```json") {
 		content = strings.TrimPrefix(content, "```json")
 		content = strings.TrimSpace(content)
@@ -157,13 +130,11 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 		content = strings.TrimSpace(content)
 	}
 
-	// Remove trailing code block markers
 	if strings.HasSuffix(content, "```") {
 		content = strings.TrimSuffix(content, "```")
 		content = strings.TrimSpace(content)
 	}
 
-	// Parse JSON response
 	var rawResult struct {
 		Reasoning string     `json:"reasoning"`
 		Steps     []TaskStep `json:"steps"`
@@ -176,12 +147,10 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 	for i := range rawResult.Steps {
 		step := &rawResult.Steps[i]
 
-		// generate ID if missing
 		if step.ID == "" {
 			step.ID = fmt.Sprintf("step_%d", i+1)
 		}
 
-		// validate required fields
 		if step.Description == "" {
 			return nil, fmt.Errorf("step %s missing description", step.ID)
 		}
@@ -200,21 +169,25 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 	}, nil
 }
 
-// ConvertToToolCalls converts decomposition steps to tool calls
 func (dr *DecompositionResult) ConvertToToolCalls() []entity.ToolCall {
 	toolCalls := make([]entity.ToolCall, len(dr.Steps))
 
 	for i, step := range dr.Steps {
+		argsJSON, _ := json.Marshal(step.Args)
+
 		toolCalls[i] = entity.ToolCall{
-			Name: step.Tool,
-			Args: step.Args,
+			ID:   fmt.Sprintf("decomp_%d", i),
+			Type: "function",
+			Function: entity.FunctionCall{
+				Name:      step.Tool,
+				Arguments: string(argsJSON),
+			},
 		}
 	}
 
 	return toolCalls
 }
 
-// GetStepSummary returns a human-readable summary of the decomposition
 func (dr *DecompositionResult) GetStepSummary() string {
 	var summary strings.Builder
 
