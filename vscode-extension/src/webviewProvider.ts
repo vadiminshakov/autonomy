@@ -10,10 +10,11 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private autonomyAgent?: AutonomyAgent;
     private configManager: ConfigurationManager;
-    private messageHistory: Array<{type: 'user' | 'agent' | 'system', content: string, timestamp: Date}> = [];
+    private messageHistory: Array<{ type: 'user' | 'agent' | 'system', content: string, timestamp: Date }> = [];
     private autoStartEnabled = false;
     private thinkingMessageId: string | null = null;
     private messagesFilePath: string;
+    private isProcessingMessage = false; // Защита от множественных вызовов
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -40,6 +41,12 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
+        // Добавляем обработчик закрытия webview
+        webviewView.onDidDispose(() => {
+            console.log('webviewProvider: Webview disposed, stopping autonomy agent');
+            this.stopAutonomyAgent();
+        });
+
         webviewView.webview.onDidReceiveMessage(
             message => {
                 switch (message.type) {
@@ -61,13 +68,16 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     case 'loadHistory':
                         this.loadAndDisplayMessages();
                         break;
+                    case 'getAgentStatus':
+                        this.updateWebviewState();
+                        break;
                 }
             },
             undefined,
         );
 
         this.updateWebviewState();
-        
+
         // Load and display messages after a short delay to ensure webview is ready
         setTimeout(() => {
             this.loadAndDisplayMessages();
@@ -79,10 +89,11 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 this.loadAndDisplayMessages();
             }
         }, 1000);
-        
-        if (this.autoStartEnabled) {
-            this.autoStartAgent();
-        }
+
+        // автозапуск агента при открытии webview
+        setTimeout(() => {
+            this.attemptAutoStart();
+        }, 800);
     }
 
     public setAutonomyAgent(agent: AutonomyAgent | undefined) {
@@ -97,7 +108,9 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     public enableAutoStart() {
         this.autoStartEnabled = true;
         if (this._view) {
-            this.autoStartAgent();
+            this.autoStartAgent().catch(error => {
+                console.log('webviewProvider: Auto-start failed:', error);
+            });
         }
     }
 
@@ -113,20 +126,20 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             }
             return;
         }
-        
+
         // Send output immediately without buffering
         if (output.trim()) {
             const filteredOutput = this.filterOutput(output);
-            
+
             if (filteredOutput.trim()) {
                 const messageType = type === 'stderr' ? 'system' : 'agent';
-                
+
                 // Hide thinking indicator before showing new message
                 this.hideThinkingIndicator();
-                
+
                 this.addToHistory(messageType, filteredOutput);
                 this.sendMessage(messageType, filteredOutput);
-                
+
                 // Show thinking indicator after agent messages, but only if task is still running
                 if (messageType === 'agent' && !this.isTaskCompletionMessage(filteredOutput)) {
                     this.showThinkingIndicator();
@@ -147,57 +160,91 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             /❌\s*Task/i,
             /Error:\s+Task/i
         ];
-        
+
         return completionPatterns.some(pattern => pattern.test(output));
     }
 
 
-    private async autoStartAgent() {
-        if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
-            return;
+    private async startFreshAgent() {
+        // Останавливаем текущий агент, если он есть
+        if (this.autonomyAgent) {
+            await this.stopAutonomyAgent();
         }
 
         try {
             const config = this.configManager.getConfiguration();
             if (!config.apiKey) {
-                this.sendMessage('system', 'Please configure your API key in the Settings tab to start using Autonomy.');
+                this.sendMessage('system', 'Welcome to Autonomy! Please configure your API key in the Settings tab to get started.');
                 return;
             }
 
-            this.sendMessage('system', 'Checking Autonomy installation...');
-            
-            // First try to run install check command to ensure Autonomy is installed
-            try {
-                await vscode.commands.executeCommand('autonomy.installCli');
-                // Wait a bit for installation to complete
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } catch (installError) {
-                // Continue with agent start
-            }
-            
-            this.sendMessage('system', 'Starting Autonomy agent...');
-            await vscode.commands.executeCommand('autonomy.start', true);
-            
-            // Wait for agent to be fully running
-            let attempts = 0;
-            while (attempts < 10 && (!this.autonomyAgent || !this.autonomyAgent.isRunning())) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                attempts++;
-            }
-            
-            if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
-                this.sendMessage('system', 'Autonomy agent is ready! You can now send tasks.');
-                this.updateWebviewState();
-            } else {
-                // Force update anyway in case the agent is actually running
-                this.updateWebviewState();
-                this.sendMessage('system', 'Agent may be ready. If input is still disabled, please check the console or restart.');
-            }
-            
+            // Создаем новый агент
+            const { AutonomyAgent } = require('./autonomyAgent');
+            const { AutonomyTaskProvider } = require('./taskProvider');
+
+            const taskProvider = new AutonomyTaskProvider();
+            this.autonomyAgent = new AutonomyAgent(config, taskProvider);
+
+            // Настраиваем агент для webview
+            this.autonomyAgent!.setOutputCallback((output: string, type: 'stdout' | 'stderr' | 'task_status') => {
+                this.sendAgentOutput(output, type);
+            });
+            this.autonomyAgent!.setWebviewMode(true);
+
+            await this.autonomyAgent!.start();
+
+            this.sendMessage('system', '🤖 Autonomy agent is ready! You can now send your coding tasks.');
+            this.updateWebviewState();
+
         } catch (error) {
-            console.error('webviewProvider: Error auto-starting agent:', error);
-            this.sendMessage('system', `Failed to start agent: ${error}. Please run "Autonomy: Install Autonomy CLI" command or check your configuration in the Settings tab.`);
+            console.error('webviewProvider: Failed to start agent:', error);
+            this.sendMessage('system', `❌ Failed to start agent: ${error}. Please check your configuration.`);
+            throw error;
         }
+    }
+
+    private async stopAutonomyAgent() {
+        if (this.autonomyAgent) {
+            try {
+                await this.autonomyAgent.stop();
+            } catch (error) {
+                console.error('webviewProvider: Error stopping agent:', error);
+            }
+            this.autonomyAgent = undefined;
+            this.updateWebviewState();
+        }
+    }
+
+    private async attemptAutoStart() {
+        try {
+            const config = this.configManager.getConfiguration();
+            if (!config.apiKey) {
+                this.sendMessage('system', '👋 Welcome to Autonomy! Please configure your API key in the Settings tab to get started.');
+                this.updateWebviewState();
+                return;
+            }
+
+            await this.startFreshAgent();
+        } catch (error) {
+            console.log('webviewProvider: Auto-start failed:', error);
+            this.sendMessage('system', '⚠️ Could not start agent automatically. Please check your configuration in the Settings tab.');
+            this.updateWebviewState();
+        }
+    }
+
+    private async autoStartAgent() {
+        // Переадресуем на новый метод
+        return this.startFreshAgent();
+    }
+
+    public async cleanup() {
+        console.log('webviewProvider: Cleaning up resources');
+        await this.stopAutonomyAgent();
+    }
+
+    public handleTaskFromCommand(task: string) {
+        console.log('webviewProvider: Received task from command:', task);
+        this.handleSendMessage(task);
     }
 
     private filterOutput(output: string): string {
@@ -205,29 +252,43 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         let filtered = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
         filtered = filtered.replace(/\r[^\n]/g, '');
         filtered = filtered.replace(/\r/g, '');
-        
+
         // Remove replacement character (�) and other problematic Unicode characters
         filtered = filtered.replace(/\uFFFD/g, '');  // Remove � character
         filtered = filtered.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''); // Remove control characters
-        
+
         // Filter out thinking text and repetitive messages
         const lines = filtered.split('\n');
         const meaningfulLines = lines.filter(line => {
             const trimmed = line.trim().toLowerCase();
-            
+
             // Filter out any line containing "thinking"
             if (trimmed.includes('thinking')) return false;
-            
-            // Filter out task iteration messages
+
+            // Keep AI responses (they start with "AI:")
+            if (line.trim().startsWith('AI:')) return true;
+
+            // Keep tool results
+            if (line.trim().startsWith('Tool result:') || line.trim().startsWith('📋 Result:')) return true;
+
+            // Keep tool completion messages
+            if (line.trim().startsWith('✓')) return true;
+
+            // Keep tool call messages
+            if (line.trim().startsWith('🔧 Tool:')) return true;
+
+            // Filter out task iteration messages (but keep other messages)
             if (trimmed.includes('=== task iteration')) return false;
-            if (trimmed.includes('task iteration')) return false;
-            
+
+            // Keep messages about AI requesting tools
+            if (trimmed.includes('ai requested tools')) return true;
+
             // Filter out empty lines
             if (!trimmed) return false;
-            
+
             return true;
         });
-        
+
         const result = meaningfulLines.join('\n').trim();
         return result;
     }
@@ -236,7 +297,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         if (this.thinkingMessageId) {
             this.hideThinkingIndicator();
         }
-        
+
         this.thinkingMessageId = 'thinking-' + Date.now();
         this._view?.webview.postMessage({
             type: 'addThinking',
@@ -277,7 +338,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             if (!fs.existsSync(autonomyDir)) {
                 fs.mkdirSync(autonomyDir, { recursive: true });
             }
-            
+
             const data = JSON.stringify(this.messageHistory, null, 2);
             fs.writeFileSync(this.messagesFilePath, data, 'utf8');
         } catch (error) {
@@ -299,7 +360,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         if (!this._view) {
             return;
         }
-        
+
         // Display all loaded messages in the webview
         for (const message of this.messageHistory) {
             this._view.webview.postMessage({
@@ -314,26 +375,60 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleSendMessage(message: string) {
-        // Handle /clear command
-        if (message.trim() === '/clear') {
-            this.handleClearHistory();
+        // Защита от множественных вызовов
+        if (this.isProcessingMessage) {
+            console.log('webviewProvider: Already processing message, ignoring duplicate');
             return;
         }
 
-        this.addToHistory('user', message);
-        this.sendMessage('user', message);
+        this.isProcessingMessage = true;
 
         try {
-            if (!this.autonomyAgent || !this.autonomyAgent.isRunning()) {
-                await this.autoStartAgent();
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            // Handle /clear command
+            if (message.trim() === '/clear') {
+                this.handleClearHistory();
+                return;
             }
-            
-            await vscode.commands.executeCommand('autonomy.runTask', message);
+
+            // Добавляем пользовательское сообщение в историю и отправляем в webview
+            this.addToHistory('user', message);
+            this.sendMessage('user', message);
+
+            // проверяем состояние агента и перезапускаем если нужно
+            if (!this.autonomyAgent || !this.autonomyAgent.isRunning()) {
+                this.sendMessage('system', '🔄 Starting agent...');
+                await this.autoStartAgent();
+
+                // даем время для запуска
+                if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } else {
+                    throw new Error('Failed to start agent. Please check your configuration.');
+                }
+            }
+
+            // показываем thinking индикатор
+            this.showThinkingIndicator();
+
+            // выполняем задачу с таймаутом - НО НЕ ЧЕРЕЗ КОМАНДУ!
+            // Команда autonomy.runTask может вызывать handleTaskFromCommand -> handleSendMessage рекурсивно
+            if (this.autonomyAgent) {
+                await this.autonomyAgent.runTask(message);
+            }
+
         } catch (error) {
-            const errorMsg = `Error executing task: ${error}`;
+            this.hideThinkingIndicator();
+            const errorMsg = `❌ Error: ${error}`;
             this.addToHistory('system', errorMsg);
             this.sendMessage('system', errorMsg);
+
+            // если произошла ошибка, проверяем состояние агента
+            if (this.autonomyAgent && !this.autonomyAgent.isRunning()) {
+                this.sendMessage('system', '🔄 Agent stopped. Please try sending your message again.');
+                this.updateWebviewState();
+            }
+        } finally {
+            this.isProcessingMessage = false;
         }
     }
 
@@ -341,7 +436,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         try {
             // Read current global config or create new one
             const currentConfig = this.configManager.readGlobalConfig() || {};
-            
+
             // Update config with new values
             if (config.provider) {
                 currentConfig.provider = config.provider;
@@ -363,30 +458,30 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             await this.configManager.writeGlobalConfig(currentConfig);
 
             this.sendMessage('system', 'Configuration saved successfully. Restarting Autonomy with new settings...');
-            
+
             // Restart autonomy agent with new configuration
             try {
                 if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
                     await this.autonomyAgent.stop();
                     this.clearMessagesFile(); // Clear messages when restarting
                 }
-                
+
                 // Trigger restart via command - this will use the updated config
                 await vscode.commands.executeCommand('autonomy.start', true);
-                
+
                 this.sendMessage('system', 'Autonomy agent restarted successfully with new configuration!');
             } catch (restartError) {
                 this.sendMessage('system', `Configuration saved but failed to restart agent: ${restartError}. Please restart manually.`);
             }
-            
+
             this.updateWebviewState();
-            
+
             this._view?.webview.postMessage({
                 type: 'configSaved'
             });
         } catch (error) {
             this.sendMessage('system', `Failed to save configuration: ${error}`);
-            
+
             this._view?.webview.postMessage({
                 type: 'configSaved'
             });
@@ -396,7 +491,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private handleGetConfig() {
         try {
             const config = this.configManager.getConfiguration();
-            
+
             this._view?.webview.postMessage({
                 type: 'configData',
                 config: {
@@ -469,7 +564,8 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
     private updateWebviewState() {
         const isRunning = this.autonomyAgent?.isRunning() || false;
-        
+        console.log(`webviewProvider: Updating webview state - agentRunning: ${isRunning}, hasAgent: ${!!this.autonomyAgent}`);
+
         this._view?.webview.postMessage({
             type: 'updateState',
             state: {

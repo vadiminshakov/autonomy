@@ -7,19 +7,19 @@ import { AutonomyConfig } from './autonomyAgent';
 export class ConfigurationManager {
     getConfiguration(): AutonomyConfig {
         const globalConfig = this.readGlobalConfig();
-        
+
         if (!globalConfig) {
             throw new Error('Configuration file not found at ~/.autonomy/config.json. Please create the configuration file.');
         }
-        
+
         const provider = globalConfig.provider || 'openai';
-        
+
         const baseUrlDefaults = {
             'openai': 'https://api.openai.com/v1',
-            'anthropic': 'https://api.anthropic.com', 
+            'anthropic': 'https://api.anthropic.com',
             'openrouter': 'https://openrouter.ai/api/v1'
         };
-        
+
         return {
             executablePath: globalConfig.executable_path || 'autonomy',
             provider: provider,
@@ -28,7 +28,7 @@ export class ConfigurationManager {
             baseURL: globalConfig.base_url || baseUrlDefaults[provider as keyof typeof baseUrlDefaults],
             maxIterations: globalConfig.max_iterations || 100,
             enableReflection: globalConfig.enable_reflection !== undefined ? globalConfig.enable_reflection : true,
-            skipExecutableValidation: false
+
         };
     }
 
@@ -36,7 +36,7 @@ export class ConfigurationManager {
         try {
             const configPath = path.join(os.homedir(), '.autonomy', 'config.json');
             console.log('configManager: Attempting to read global config from:', configPath);
-            
+
             if (fs.existsSync(configPath)) {
                 const configContent = fs.readFileSync(configPath, 'utf8');
                 const config = JSON.parse(configContent);
@@ -56,11 +56,11 @@ export class ConfigurationManager {
         try {
             const configDir = path.join(os.homedir(), '.autonomy');
             const configPath = path.join(configDir, 'config.json');
-            
+
             if (!fs.existsSync(configDir)) {
                 fs.mkdirSync(configDir, { recursive: true });
             }
-            
+
             fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
             console.log('configManager: Configuration saved to:', configPath);
         } catch (error) {
@@ -71,7 +71,7 @@ export class ConfigurationManager {
 
     async configure(): Promise<void> {
         const currentConfig = this.readGlobalConfig() || {};
-        
+
         const providers = ['openai', 'anthropic', 'openrouter'];
         const selectedProvider = await vscode.window.showQuickPick(providers, {
             placeHolder: 'Select AI provider',
@@ -118,7 +118,7 @@ export class ConfigurationManager {
 
         const baseUrlDefaults = {
             'openai': 'https://api.openai.com/v1',
-            'anthropic': 'https://api.anthropic.com', 
+            'anthropic': 'https://api.anthropic.com',
             'openrouter': 'https://openrouter.ai/api/v1'
         };
 
@@ -188,14 +188,14 @@ export class ConfigurationManager {
 
     async validateConfiguration(): Promise<boolean> {
         const config = this.getConfiguration();
-        
+
         if (!config.apiKey) {
             const configure = await vscode.window.showWarningMessage(
                 'Autonomy API key is not configured',
                 'Configure Now',
                 'Cancel'
             );
-            
+
             if (configure === 'Configure Now') {
                 await this.configure();
                 return this.validateConfiguration();

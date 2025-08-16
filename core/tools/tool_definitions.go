@@ -1,6 +1,8 @@
 package tools
 
-import "github.com/vadiminshakov/autonomy/core/entity"
+import (
+	"github.com/vadiminshakov/autonomy/core/entity"
+)
 
 // GetToolDescriptions returns tool definitions
 //

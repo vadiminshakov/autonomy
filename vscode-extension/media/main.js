@@ -14,29 +14,28 @@ let originalConfig = {}; // Store original config to track changes
 let configChanged = false;
 
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initializeElements();
     setupEventListeners();
     loadConfig();
-    
-    if (sendButton && messageInput) {
-        sendButton.disabled = false;
-        messageInput.disabled = false;
-    }
-    
+
+    // не активируем элементы принудительно, ждём информации о состоянии агента
+    // запрашиваем текущее состояние агента
+    vscode.postMessage({ type: 'getAgentStatus' });
+
     // Request to load message history
     vscode.postMessage({ type: 'loadHistory' });
 });
 
 function initializeElements() {
-    
+
     clearHistoryBtn = document.getElementById('clear-history');
     newTaskBtn = document.getElementById('new-task');
     sendButton = document.getElementById('send-button');
     messageInput = document.getElementById('message-input');
     messagesContainer = document.getElementById('messages');
 
-    
+
     providerSelect = document.getElementById('provider');
     apiKeyInput = document.getElementById('api-key');
     modelInput = document.getElementById('model');
@@ -46,10 +45,17 @@ function initializeElements() {
     baseUrlInput = document.getElementById('base-url');
     saveConfigBtn = document.getElementById('save-config');
     loadConfigBtn = document.getElementById('load-config');
+
+    // по умолчанию элементы ввода отключены до получения информации о состоянии агента
+    if (sendButton && messageInput) {
+        sendButton.disabled = true;
+        messageInput.disabled = true;
+        messageInput.placeholder = 'Starting agent...';
+    }
 }
 
 function setupEventListeners() {
-    
+
     clearHistoryBtn.addEventListener('click', () => {
         vscode.postMessage({ type: 'clearHistory' });
     });
@@ -58,7 +64,7 @@ function setupEventListeners() {
         vscode.postMessage({ type: 'newTask' });
     });
 
-    
+
     sendButton.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -67,36 +73,36 @@ function setupEventListeners() {
         }
     });
 
-    
-    messageInput.addEventListener('input', function() {
+
+    messageInput.addEventListener('input', function () {
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
 
-    
+
     saveConfigBtn.addEventListener('click', saveConfig);
     loadConfigBtn.addEventListener('click', loadConfig);
 
-    
-    providerSelect.addEventListener('change', function() {
+
+    providerSelect.addEventListener('change', function () {
         onProviderChange();
         checkConfigChanges();
     });
-    
-    
-    modelSelect.addEventListener('change', function() {
+
+
+    modelSelect.addEventListener('change', function () {
         if (this.value) {
             modelInput.value = this.value;
         }
         checkConfigChanges();
     });
-    
+
     // Add change listeners to all config inputs
     apiKeyInput.addEventListener('input', checkConfigChanges);
     modelInput.addEventListener('input', checkConfigChanges);
     executablePathInput.addEventListener('input', checkConfigChanges);
     baseUrlInput.addEventListener('input', checkConfigChanges);
-    
+
     toggleModelInputBtn.addEventListener('click', toggleModelInput);
 }
 
@@ -118,13 +124,13 @@ function addMessage(type, content, timestamp = null) {
     if (!messagesContainer) {
         return;
     }
-    
+
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    
+
     // Parse markdown for agent messages, plain text for others
     if (type === 'agent' && typeof marked !== 'undefined') {
         try {
@@ -134,13 +140,17 @@ function addMessage(type, content, timestamp = null) {
                 .replace(/\\t/g, '\t')           // Convert \t to actual tabs
                 .replace(/\\r/g, '\r')           // Convert \r to actual carriage returns
                 .replace(/\\\\/g, '\\');         // Convert \\ to single backslash
-            
+
+            // Special handling for tool calls
+            processedContent = processedContent.replace(/🔧 Tool: ([^\n]+)/g, '<div class="tool-call">🔧 Tool: $1</div>');
+            processedContent = processedContent.replace(/📋 Result: ([^\n]+)/g, '<div class="tool-call">📋 Result: $1</div>');
+
             // Configure marked with safe options
             marked.setOptions({
                 breaks: true,
                 gfm: true,
                 sanitize: false,
-                highlight: function(code, lang) {
+                highlight: function (code, lang) {
                     // Simple syntax highlighting for common languages
                     if (lang && ['javascript', 'js', 'python', 'py', 'bash', 'sh', 'json', 'xml', 'html', 'css', 'go', 'rust'].includes(lang.toLowerCase())) {
                         return `<code class="language-${lang.toLowerCase()}">${escapeHtml(code)}</code>`;
@@ -156,7 +166,7 @@ function addMessage(type, content, timestamp = null) {
     } else {
         contentDiv.textContent = content;
     }
-    
+
     messageDiv.appendChild(contentDiv);
 
     if (timestamp) {
@@ -168,7 +178,7 @@ function addMessage(type, content, timestamp = null) {
 
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    
+
     // Disable spinner when we receive response from agent
     if (type === 'agent' || type === 'system') {
         setLoading(sendButton, false);
@@ -184,11 +194,11 @@ function escapeHtml(text) {
 function addThinkingIndicator(messageId) {
     // Remove any existing thinking indicator
     removeThinkingIndicator();
-    
+
     const thinkingDiv = document.createElement('div');
     thinkingDiv.className = 'message thinking';
     thinkingDiv.id = messageId;
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.className = 'thinking-content';
     contentDiv.innerHTML = '<span class="thinking-dots">thinking</span><span class="dots">...</span>';
@@ -216,14 +226,19 @@ function clearMessages() {
 }
 
 function updateAgentStatus(running) {
+    console.log('webview: updateAgentStatus called with running:', running);
     agentRunning = running;
-    
+
     if (running) {
         sendButton.disabled = false;
         messageInput.disabled = false;
+        messageInput.placeholder = "Type your task here... (e.g., 'Add error handling to the getUserData function')";
+        console.log('webview: Agent running - enabled input elements');
     } else {
         sendButton.disabled = true;
         messageInput.disabled = true;
+        messageInput.placeholder = 'Agent not running. Check configuration or restart.';
+        console.log('webview: Agent not running - disabled input elements');
     }
 
     setLoading(sendButton, false);
@@ -235,7 +250,7 @@ function setLoading(button, loading) {
         button.disabled = true;
     } else {
         button.classList.remove('loading');
-        
+
         if (button === sendButton) {
             button.disabled = !agentRunning;
         } else {
@@ -245,25 +260,25 @@ function setLoading(button, loading) {
 }
 
 function showTab(tabName) {
-    
+
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
 
-    
+
     document.querySelectorAll('.tab-button').forEach(btn => {
         btn.classList.remove('active');
     });
 
-    
+
     document.getElementById(`${tabName}-tab`).classList.add('active');
-    
-    
+
+
     event.target.classList.add('active');
 
     currentTab = tabName;
 
-    
+
     if (tabName === 'config') {
         loadConfig();
     }
@@ -275,7 +290,7 @@ function saveConfig() {
     setTimeout(() => {
         saveConfigBtn.classList.remove('btn-pressed');
     }, 150);
-    
+
     const config = {
         provider: providerSelect.value,
         apiKey: apiKeyInput.value,
@@ -312,12 +327,12 @@ function populateConfigForm(config) {
         executablePath: config.executablePath || 'autonomy',
         baseURL: config.baseURL || ''
     };
-    
+
     onProviderChange();
-    
+
     setLoading(loadConfigBtn, false);
     setLoading(saveConfigBtn, false);
-    
+
     // Reset config changed state and update button
     configChanged = false;
     updateSaveButtonState();
@@ -325,11 +340,11 @@ function populateConfigForm(config) {
 
 function onProviderChange() {
     const provider = providerSelect.value;
-    
-    
+
+
     updateModelOptions(provider);
-    
-    
+
+
     updateBaseUrl(provider);
 }
 
@@ -353,14 +368,14 @@ function updateModelOptions(provider) {
         'local': {
             placeholder: 'e.g., deepseek-coder-v2:16b',
             default: 'deepseek-coder-v2:16b',
-            models: ['deepseek-coder-v2:16b', 'llama4', 'llama3.2:latest', 'qwen2.5-coder:7b-instruct', ]
+            models: ['deepseek-coder-v2:16b', 'llama4', 'llama3.2:latest', 'qwen2.5-coder:7b-instruct',]
         }
     };
-    
+
     const config = modelConfigs[provider] || modelConfigs['openai'];
     modelInput.placeholder = config.placeholder;
-    
-    
+
+
     modelSelect.innerHTML = '<option value="">Select a model...</option>';
     config.models.forEach(model => {
         const option = document.createElement('option');
@@ -368,8 +383,8 @@ function updateModelOptions(provider) {
         option.textContent = model;
         modelSelect.appendChild(option);
     });
-    
-    
+
+
     if (!modelInput.value || shouldUpdateModel(provider, modelInput.value)) {
         modelInput.value = config.default;
         modelSelect.value = config.default;
@@ -377,7 +392,7 @@ function updateModelOptions(provider) {
 }
 
 function shouldUpdateModel(provider, currentModel) {
-    
+
     if (provider === 'openrouter' && !currentModel.includes('/')) {
         return true;
     }
@@ -394,11 +409,11 @@ function updateBaseUrl(provider) {
         'openrouter': 'https://openrouter.ai/api/v1',
         'local': 'http://localhost:11434/v1'
     };
-    
-    
+
+
     const currentUrl = baseUrlInput.value;
     const isDefaultUrl = Object.values(baseUrls).includes(currentUrl);
-    
+
     if (!currentUrl || isDefaultUrl) {
         baseUrlInput.value = baseUrls[provider] || '';
     }
@@ -406,21 +421,21 @@ function updateBaseUrl(provider) {
 
 function toggleModelInput() {
     const isSelectVisible = modelSelect.style.display !== 'none';
-    
+
     if (isSelectVisible) {
-        
+
         modelSelect.style.display = 'none';
         modelInput.style.display = 'block';
         toggleModelInputBtn.textContent = '📋';
         toggleModelInputBtn.title = 'Switch to dropdown';
     } else {
-        
+
         modelSelect.style.display = 'block';
         modelInput.style.display = 'none';
         toggleModelInputBtn.textContent = '✏️';
         toggleModelInputBtn.title = 'Switch to text input';
-        
-        
+
+
         if (modelInput.value) {
             modelSelect.value = modelInput.value;
         }
@@ -430,24 +445,25 @@ function toggleModelInput() {
 
 window.addEventListener('message', event => {
     const message = event.data;
-    
+
     switch (message.type) {
         case 'addMessage':
             addMessage(message.message.type, message.message.content, message.message.timestamp);
             break;
-        
+
         case 'clearMessages':
             clearMessages();
             break;
-        
+
         case 'updateState':
+            console.log('webview: Received updateState message:', message.state);
             updateAgentStatus(message.state.agentRunning);
             break;
-        
+
         case 'configData':
             populateConfigForm(message.config);
             break;
-        
+
         case 'configSaved':
             setLoading(saveConfigBtn, false);
             // Reset config changed state after successful save
@@ -462,11 +478,11 @@ window.addEventListener('message', event => {
                 baseURL: baseUrlInput.value
             };
             break;
-        
+
         case 'addThinking':
             addThinkingIndicator(message.messageId);
             break;
-        
+
         case 'removeThinking':
             removeThinkingIndicator(message.messageId);
             break;
@@ -483,7 +499,7 @@ function checkConfigChanges() {
         executablePath: executablePathInput.value,
         baseURL: baseUrlInput.value
     };
-    
+
     configChanged = JSON.stringify(currentConfig) !== JSON.stringify(originalConfig);
     updateSaveButtonState();
 }

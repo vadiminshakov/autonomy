@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// Spinner represents a loading animation
 type Spinner struct {
 	frames   []string
 	message  string
@@ -17,7 +16,6 @@ type Spinner struct {
 	cancel   context.CancelFunc
 }
 
-// NewSpinner creates a new spinner with default settings
 func NewSpinner(message string) *Spinner {
 	return &Spinner{
 		frames: []string{
@@ -28,7 +26,6 @@ func NewSpinner(message string) *Spinner {
 	}
 }
 
-// Start begins the spinner animation
 func (s *Spinner) Start() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -44,7 +41,6 @@ func (s *Spinner) Start() {
 	go s.spin(ctx)
 }
 
-// Stop ends the spinner animation
 func (s *Spinner) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -61,14 +57,12 @@ func (s *Spinner) Stop() {
 	fmt.Print("\r\033[K")
 }
 
-// UpdateMessage changes the spinner message
 func (s *Spinner) UpdateMessage(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.message = message
 }
 
-// spin runs the animation loop
 func (s *Spinner) spin(ctx context.Context) {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -100,23 +94,20 @@ func (s *Spinner) spin(ctx context.Context) {
 	}
 }
 
-// ShowThinking displays a simple thinking animation
 func ShowThinking() *Spinner {
 	spinner := NewSpinner("")
 	spinner.Start()
 	return spinner
 }
 
-// ShowToolExecution displays a spinner for tool execution
 func ShowToolExecution(toolName string) *Spinner {
 	spinner := NewSpinner(fmt.Sprintf("executing %s...", toolName))
-	spinner.frames = []string{"⚙️ ", "🔧", "⚡", "🛠️ "}
+	spinner.frames = []string{"|", "/", "-", "\\"}
 	spinner.interval = 200 * time.Millisecond
 	spinner.Start()
 	return spinner
 }
 
-// ShowProcessing displays a spinner for general processing
 func ShowProcessing(message string) *Spinner {
 	spinner := NewSpinner(message)
 	spinner.frames = []string{"◐", "◓", "◑", "◒"}

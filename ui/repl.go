@@ -11,13 +11,11 @@ import (
 	"github.com/vadiminshakov/autonomy/core/config"
 )
 
-// REPLCommands stores command history and provides REPL functionality
 type REPLCommands struct {
 	history  []string
 	readline *readline.Instance
 }
 
-// createReadline creates a new readline instance with standard configuration
 func createReadline() (*readline.Instance, error) {
 	return readline.NewEx(&readline.Config{
 		Prompt:            "",
@@ -29,7 +27,6 @@ func createReadline() (*readline.Instance, error) {
 	})
 }
 
-// NewREPL creates a new REPL interface
 func NewREPL() *REPLCommands {
 	rl, err := createReadline()
 	if err != nil {
@@ -42,7 +39,6 @@ func NewREPL() *REPLCommands {
 	}
 }
 
-// completer provides auto-completion for built-in commands
 var completer = readline.NewPrefixCompleter(
 	readline.PcItem("help"),
 	readline.PcItem("clear"),
@@ -51,26 +47,23 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("exit"),
 )
 
-// Close releases REPL resources
 func (r *REPLCommands) Close() {
 	if r.readline != nil {
 		r.readline.Close()
 	}
 }
 
-// ShowWelcome prints the welcome message
 func (r *REPLCommands) ShowWelcome() {
 	fmt.Print("\033[2J\033[H")
 
 	fmt.Println()
-	fmt.Println(BrightCyan("🤖 AI programming assistant"))
+	fmt.Println(BrightCyan("AI programming assistant"))
 	fmt.Println()
-	fmt.Println(Info("Enter your programming tasks or commands"))
+	fmt.Println(BrightBlue("Enter your programming tasks or commands"))
 	fmt.Println(Dim("Available commands: help, clear, history, reconfig, exit"))
 	fmt.Println()
 }
 
-// GetPrompt returns a styled prompt for user input
 func (r *REPLCommands) GetPrompt() string {
 	timestamp := time.Now().Format("15:04")
 	return fmt.Sprintf("%s [%s] %s ",
@@ -79,7 +72,6 @@ func (r *REPLCommands) GetPrompt() string {
 		BrightGreen("❯"))
 }
 
-// ReadInput reads user input and handles built-in commands
 func (r *REPLCommands) ReadInput() (string, bool, bool) {
 	r.readline.SetPrompt(r.GetPrompt())
 
@@ -93,17 +85,14 @@ func (r *REPLCommands) ReadInput() (string, bool, bool) {
 		return "", true, false
 	}
 
-	// trim whitespace
 	inputStr := strings.TrimSpace(line)
 
 	if inputStr == "" {
 		return "", false, false
 	}
 
-	// add to history
 	r.history = append(r.history, inputStr)
 
-	// handle built-in commands
 	switch inputStr {
 	case "exit":
 		return "", true, false
@@ -131,7 +120,6 @@ func (r *REPLCommands) ReadInput() (string, bool, bool) {
 	}
 }
 
-// showHelp prints built-in command help
 func (r *REPLCommands) showHelp() {
 	helpText := `Available commands:
 
@@ -145,62 +133,52 @@ General:
 	fmt.Println(helpText)
 }
 
-// clear clears the terminal screen
 func (r *REPLCommands) clear() {
 	fmt.Print("\033[2J\033[H")
-	fmt.Println(BrightCyan("🧹 Screen cleared"))
+	fmt.Println(BrightCyan("Screen cleared"))
 	fmt.Println()
 }
 
-// showHistory prints command history
 func (r *REPLCommands) showHistory() {
 	fmt.Println()
 	if len(r.history) == 0 {
-		fmt.Println(Info("Command history is empty"))
+		fmt.Println(BrightBlue("Command history is empty"))
 		fmt.Println()
 		return
 	}
 
-	fmt.Println(BrightCyan("📜 Command history:"))
+	fmt.Println(BrightCyan("Command history:"))
 	fmt.Println()
 
-	start := 0
-	if len(r.history) > 10 {
-		start = len(r.history) - 10
-		fmt.Println(Dim("... (showing last 10 commands)"))
+	start := len(r.history) - 10
+	if start < 0 {
+		start = 0
 	}
 
-	for i := start; i < len(r.history); i++ {
-		cmd := r.history[i]
-		if len(cmd) > 60 {
-			cmd = cmd[:57] + "..."
-		}
+	for i, cmd := range r.history[start:] {
 		fmt.Printf("%s %s %s\n",
-			Dim(fmt.Sprintf("%2d.", i+1)),
-			BrightWhite(cmd),
-			Dim(time.Now().Format("15:04")))
+			Dim(fmt.Sprintf("%d.", i+start+1)),
+			BrightBlue("→"),
+			cmd)
 	}
 	fmt.Println()
 }
 
-// ShowError prints the error in a formatted style
 func ShowError(err error) {
 	fmt.Println()
-	fmt.Println(Error(err.Error()))
+	fmt.Println(BrightRed(err.Error()))
 	fmt.Println()
 }
 
-// ShowTaskStart prints a start-task banner
 func ShowTaskStart(task string) {
 	fmt.Println()
-	fmt.Println(AI("Running task: " + task))
+	fmt.Println(BrightPurple("Running task: " + task))
 	fmt.Println(Dim(strings.Repeat("─", 50)))
 }
 
-// ShowTaskComplete prints a task-completed banner
 func ShowTaskComplete() {
 	fmt.Println(Dim(strings.Repeat("─", 50)))
-	fmt.Println(Success("Task completed!"))
+	fmt.Println(BrightGreen("Task completed!"))
 	fmt.Println()
 }
 
@@ -215,17 +193,17 @@ func (r *REPLCommands) reconfig() bool {
 
 	rl, reinitErr := createReadline()
 	if reinitErr != nil {
-		fmt.Println(Error("failed to reinitialize readline: " + reinitErr.Error()))
+		fmt.Println(BrightRed("failed to reinitialize readline: " + reinitErr.Error()))
 		return false
 	}
 	r.readline = rl
 
 	if err != nil {
-		fmt.Println(Error("failed to reconfigure: " + err.Error()))
+		fmt.Println(BrightRed("failed to reconfigure: " + err.Error()))
 		fmt.Println()
 		return false
 	}
-	fmt.Println(Success("configuration updated."))
+	fmt.Println(BrightGreen("configuration updated."))
 	fmt.Println()
 	return true
 }

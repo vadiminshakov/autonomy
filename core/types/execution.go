@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// StepStatus represents the status of an execution step
 type StepStatus string
 
 const (
@@ -16,7 +15,6 @@ const (
 	StepStatusFailed    StepStatus = "failed"
 )
 
-// ExecutionStep represents a single step in the execution plan
 type ExecutionStep struct {
 	ID           string         `json:"id"`
 	ToolName     string         `json:"tool_name"`
@@ -28,30 +26,35 @@ type ExecutionStep struct {
 	StartTime    *time.Time     `json:"start_time,omitempty"`
 	EndTime      *time.Time     `json:"end_time,omitempty"`
 
-	// Additional fields for reflection
 	FilesAffected []string `json:"files_affected,omitempty"`
 	KeyFindings   []string `json:"key_findings,omitempty"`
-	Category      string   `json:"category,omitempty"` // "analysis", "modification", "test"
+	Category      string   `json:"category,omitempty"`
+
+	RiskLevel        string        `json:"risk_level,omitempty"`
+	Timeout          time.Duration `json:"timeout,omitempty"`
+	PreValidation    bool          `json:"pre_validation,omitempty"`
+	PostValidation   bool          `json:"post_validation,omitempty"`
+	EnableMonitoring bool          `json:"enable_monitoring,omitempty"`
+	CanParallelize   bool          `json:"can_parallelize,omitempty"`
 }
 
-// ExecutionPlan represents a complete execution plan with dependencies
 type ExecutionPlan struct {
 	Steps          []*ExecutionStep `json:"steps"`
 	ParallelGroups [][]string       `json:"parallel_groups"`
 	Mu             sync.RWMutex     `json:"-"`
+
+	StrategyID    string `json:"strategy_id,omitempty"`
+	ExecutionMode string `json:"execution_mode,omitempty"`
 }
 
-// RLock provides read lock access to the plan
 func (p *ExecutionPlan) RLock() {
 	p.Mu.RLock()
 }
 
-// RUnlock releases the read lock
 func (p *ExecutionPlan) RUnlock() {
 	p.Mu.RUnlock()
 }
 
-// GetSteps returns the execution steps
 func (p *ExecutionPlan) GetSteps() []*ExecutionStep {
 	return p.Steps
 }

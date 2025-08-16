@@ -10,7 +10,7 @@ export interface AutonomyConfig {
     baseURL?: string;
     maxIterations: number;
     enableReflection: boolean;
-    skipExecutableValidation?: boolean;
+
 }
 
 export class AutonomyAgent {
@@ -49,14 +49,7 @@ export class AutonomyAgent {
         }
 
         try {
-            if (!this.config.skipExecutableValidation) {
-                await this.validateExecutable();
-            } else {
-                console.log('autonomyAgent: Skipping executable validation (as configured)');
-                if (!this.isWebviewMode) {
-                    this.outputChannel.appendLine('Skipping executable validation (as configured in settings)');
-                }
-            }
+            await this.validateExecutable();
 
             await this.createConfigFile();
 
@@ -81,8 +74,31 @@ export class AutonomyAgent {
             this.isRunningFlag = true;
             console.log(`autonomyAgent: isRunningFlag set to true`);
 
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            console.log(`autonomyAgent: After 1s wait, process exists: ${!!this.process}, killed: ${this.process?.killed}, isRunningFlag: ${this.isRunningFlag}`);
+            // ждем сигнала готовности от процесса
+            const readyPromise = new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Timeout waiting for agent ready signal'));
+                }, 10000);
+
+                const onData = (data: Buffer) => {
+                    const output = data.toString();
+                    if (output.includes('Autonomy agent is ready')) {
+                        clearTimeout(timeout);
+                        this.process?.stdout?.removeListener('data', onData);
+                        resolve();
+                    }
+                };
+
+                this.process?.stdout?.on('data', onData);
+            });
+
+            try {
+                await readyPromise;
+                console.log(`autonomyAgent: Agent ready`);
+            } catch (error) {
+                console.error(`autonomyAgent: Failed to start agent:`, error);
+                throw error;
+            }
 
             if (!this.process || this.process.killed) {
                 throw new Error('Failed to start autonomy process');
@@ -156,42 +172,23 @@ export class AutonomyAgent {
     private async validateExecutable(): Promise<void> {
         console.log(`autonomyAgent: Validating executable: ${this.config.executablePath}`);
 
-        return new Promise((resolve, reject) => {
-            const testProcess = spawn(this.config.executablePath, ['--version'], {
-                stdio: 'pipe'
-            });
+        const fs = require('fs');
+        const autonomyPath = `${process.env.HOME}/.local/bin/autonomy`;
 
-            const timeout = setTimeout(() => {
-                testProcess.kill();
-                reject(new Error(`Timeout validating autonomy executable. Please ensure the 'autonomy' executable is installed and available in your PATH, or configure the correct path in settings.`));
-            }, 3000);
+        console.log(`autonomyAgent: Checking for autonomy at: ${autonomyPath}`);
 
-            testProcess.on('error', (error) => {
-                clearTimeout(timeout);
-                console.error(`autonomyAgent: Executable validation error:`, error);
-
-                let errorMsg = `Cannot find autonomy executable at "${this.config.executablePath}". `;
-                if (error.message.includes('ENOENT')) {
-                    errorMsg += 'Please install autonomy or configure the correct path in extension settings.';
-                } else {
-                    errorMsg += `Error: ${error.message}`;
-                }
-
-                reject(new Error(errorMsg));
-            });
-
-            testProcess.on('close', (code) => {
-                clearTimeout(timeout);
-                console.log(`autonomyAgent: Executable validation completed with code: ${code}`);
-                if (code === 0) {
-                    resolve();
-                } else if (code === null) {
-                    reject(new Error(`Autonomy executable validation timed out. Please check if the executable is working correctly.`));
-                } else {
-                    reject(new Error(`Autonomy executable test failed with exit code ${code}. Please check your installation.`));
-                }
-            });
-        });
+        try {
+            if (fs.existsSync(autonomyPath) && fs.statSync(autonomyPath).isFile()) {
+                console.log(`autonomyAgent: Found autonomy executable`);
+                this.config.executablePath = autonomyPath;
+                return Promise.resolve();
+            } else {
+                throw new Error(`Cannot find autonomy executable at ${autonomyPath}. Please run 'make install' in the autonomy project directory.`);
+            }
+        } catch (error) {
+            console.log(`autonomyAgent: Validation failed:`, error);
+            return Promise.reject(error);
+        }
     }
 
     private async createConfigFile(): Promise<void> {
@@ -297,12 +294,20 @@ export class AutonomyAgent {
 
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`Process error: ${error.message}`);
+            } else {
+                // уведомляем webview об ошибке процесса
+                if (this.outputCallback) {
+                    this.outputCallback(`process error: ${error.message}`, 'stderr');
+                }
             }
 
             if (this.currentTask && this.currentTask.status === 'running') {
                 this.currentTask.status = 'failed';
                 this.taskProvider.refresh();
             }
+
+            // пробуем очистить процесс
+            this.cleanup();
         });
     }
 
@@ -372,5 +377,30 @@ export class AutonomyAgent {
 
     getOutputChannel(): vscode.OutputChannel {
         return this.outputChannel;
+    }
+
+    private cleanup(): void {
+        console.log('autonomyAgent: Cleaning up process resources');
+
+        if (this.process) {
+            try {
+                if (!this.process.killed) {
+                    this.process.kill('SIGTERM');
+
+                    // принудительно убиваем через 5 секунд если не завершился
+                    setTimeout(() => {
+                        if (this.process && !this.process.killed) {
+                            console.log('autonomyAgent: Force killing process');
+                            this.process.kill('SIGKILL');
+                        }
+                    }, 5000);
+                }
+            } catch (error) {
+                console.error('autonomyAgent: Error during cleanup:', error);
+            }
+        }
+
+        this.isRunningFlag = false;
+        this.process = undefined;
     }
 }

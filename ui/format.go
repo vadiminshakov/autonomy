@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// FormatAssistantResponse formats AI response: code blocks in bright green, text in bright white.
 func FormatAssistantResponse(resp string) string {
 	var b strings.Builder
 	lines := strings.Split(resp, "\n")
@@ -25,22 +24,18 @@ func FormatAssistantResponse(resp string) string {
 	return b.String()
 }
 
-// ShowIndexStatus displays index-related status messages in UI
 func ShowIndexStatus(message string) {
-	fmt.Println(Info("🔍 " + message))
+	fmt.Println(BrightBlue(message))
 }
 
-// ShowIndexSuccess displays successful index operations
 func ShowIndexSuccess(message string) {
-	fmt.Println(Success("🔍 " + message))
+	fmt.Println(BrightGreen(message))
 }
 
-// ShowIndexError displays index-related errors
 func ShowIndexError(message string) {
-	fmt.Println(Error("🔍 " + message))
+	fmt.Println(BrightRed(message))
 }
 
-// ShowIndexWarning displays index-related warnings
 func ShowIndexWarning(message string) {
-	fmt.Println(Warning("🔍 " + message))
+	fmt.Println(BrightYellow(message))
 }
