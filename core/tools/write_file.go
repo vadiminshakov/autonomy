@@ -11,11 +11,7 @@ func init() {
 	Register("write_file", WriteFile)
 }
 
-// WriteFile creates or overwrites a file at args["path"] with the provided content.
-//
-//nolint:gocyclo
 func WriteFile(args map[string]interface{}) (string, error) {
-	// support aliases: path, file, fileName, file_path
 	var pathVal string
 	var ok bool
 	if pathVal, ok = args["path"].(string); !ok {
@@ -78,8 +74,6 @@ func WriteFile(args map[string]interface{}) (string, error) {
 	} else {
 		state.RecordFileCreated(cleanPath)
 	}
-
-	go autoValidateAfterFileChange(cleanPath)
 
 	return fmt.Sprintf("file %s successfully written (%d bytes)", pathVal, len(contentVal)), nil
 }

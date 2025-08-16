@@ -15,7 +15,6 @@ func init() {
 	Register("git_branch", GitBranch)
 }
 
-// GitStatus shows the working tree status.
 func GitStatus(args map[string]interface{}) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -34,10 +33,8 @@ func GitStatus(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Git status:\n%s", result), nil
 }
 
-// GitLog shows commit history.
 func GitLog(args map[string]interface{}) (string, error) {
-	// determine how many commits to show
-	count := "10" // default
+	count := "10"
 	if c, ok := args["count"].(string); ok && c != "" {
 		count = c
 	} else if c, ok := args["count"].(float64); ok {
@@ -61,9 +58,7 @@ func GitLog(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Last %s commits:\n%s", count, result), nil
 }
 
-// GitDiff shows changes.
 func GitDiff(args map[string]interface{}) (string, error) {
-	// show diff for a specific file or the whole repo
 	var cmdArgs []string
 	if file, ok := args["file"].(string); ok && file != "" {
 		cmdArgs = []string{"diff", file}
@@ -71,7 +66,6 @@ func GitDiff(args map[string]interface{}) (string, error) {
 		cmdArgs = []string{"diff"}
 	}
 
-	// add --cached option to display index changes
 	if cached, ok := args["cached"].(bool); ok && cached {
 		cmdArgs = append(cmdArgs, "--cached")
 	} else if cached, ok := args["cached"].(string); ok && (cached == "true" || cached == "1") {
@@ -95,13 +89,10 @@ func GitDiff(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Git diff:\n%s", result), nil
 }
 
-// GitBranch manages branches.
-//
-//nolint:gocyclo
 func GitBranch(args map[string]interface{}) (string, error) {
 	action, ok := args["action"].(string)
 	if !ok || action == "" {
-		action = "list" // default action
+		action = "list"
 	}
 
 	switch action {

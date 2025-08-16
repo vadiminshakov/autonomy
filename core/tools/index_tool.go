@@ -34,7 +34,7 @@ func searchIndex(args map[string]any) (string, error) {
 	results.WriteString(fmt.Sprintf("Search results for query: '%s'\n\n", query))
 
 	if manager.IsBuilding() {
-		results.WriteString("⚠️  Index is still building in background. Results may be incomplete.\n\n")
+		results.WriteString("Index is still building in background. Results may be incomplete.\n\n")
 	}
 
 	if len(symbols) > 0 {
@@ -44,7 +44,7 @@ func searchIndex(args map[string]any) (string, error) {
 		}
 
 		for lang, langSymbols := range languageGroups {
-			results.WriteString(fmt.Sprintf("🔧 %s:\n", strings.ToUpper(string(lang))))
+			results.WriteString(fmt.Sprintf("%s:\n", strings.ToUpper(string(lang))))
 
 			kindGroups := make(map[index.SymbolKind][]*index.CodeSymbol)
 			for _, symbol := range langSymbols {
@@ -110,7 +110,7 @@ func getFunction(args map[string]any) (string, error) {
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("🔧 %s: %s\n\n", strings.ToUpper(string(symbol.Kind)), symbol.Name))
+	result.WriteString(fmt.Sprintf("%s: %s\n\n", strings.ToUpper(string(symbol.Kind)), symbol.Name))
 	result.WriteString(fmt.Sprintf("Language: %s\n", symbol.Language))
 	result.WriteString(fmt.Sprintf("Package: %s\n", symbol.Package))
 	result.WriteString(fmt.Sprintf("File: %s:%d\n", symbol.File, symbol.StartLine))
@@ -176,7 +176,7 @@ func getPackageInfo(args map[string]any) (string, error) {
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("📦 PACKAGE: %s\n\n", packageName))
+	result.WriteString(fmt.Sprintf("PACKAGE: %s\n\n", packageName))
 
 	languageGroups := make(map[index.Language][]*index.CodeSymbol)
 	for _, symbol := range symbols {
@@ -184,7 +184,7 @@ func getPackageInfo(args map[string]any) (string, error) {
 	}
 
 	for lang, langSymbols := range languageGroups {
-		result.WriteString(fmt.Sprintf("🔧 %s:\n", strings.ToUpper(string(lang))))
+		result.WriteString(fmt.Sprintf("%s:\n", strings.ToUpper(string(lang))))
 
 		kindGroups := make(map[index.SymbolKind][]*index.CodeSymbol)
 		for _, symbol := range langSymbols {

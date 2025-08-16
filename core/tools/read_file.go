@@ -12,10 +12,9 @@ func init() {
 }
 
 const (
-	maxFileSize = 1024 * 1024 // 1MB limit
+	maxFileSize = 1024 * 1024
 )
 
-// ReadFile returns file contents for args["path"].
 func ReadFile(args map[string]interface{}) (string, error) {
 	pathVal, ok := args["path"].(string)
 	if !ok {
@@ -52,7 +51,6 @@ func ReadFile(args map[string]interface{}) (string, error) {
 	return string(data), nil
 }
 
-// isSensitiveFile checks if a file is sensitive and should not be read
 func isSensitiveFile(path string) bool {
 	path = strings.ToLower(filepath.Clean(path))
 
@@ -70,7 +68,6 @@ func isSensitiveFile(path string) bool {
 		}
 	}
 
-	// Check for hidden files in sensitive directories
 	if strings.Contains(path, "/.ssh/") || strings.Contains(path, "/.gnupg/") {
 		return true
 	}

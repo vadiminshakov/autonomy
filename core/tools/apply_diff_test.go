@@ -7,8 +7,8 @@ import (
 )
 
 func TestApplyDiff_ValidDiff(t *testing.T) {
-	// create a temporary test file
-	testFile := "test_apply_diff.go"
+	// create a temporary test file in temp directory
+	testFile := t.TempDir() + "/test_apply_diff.go"
 	originalContent := `package main
 
 import "fmt"
@@ -215,7 +215,7 @@ func TestFixHunkHeader(t *testing.T) {
 
 func TestValidateAndNormalizeDiffAutoFix(t *testing.T) {
 	// create a temporary test file for normalization tests
-	testFile := "test_normalize.go"
+	testFile := t.TempDir() + "/test_normalize.go"
 	originalContent := `package main
 
 import "fmt"
@@ -277,7 +277,7 @@ func main() {
 
 func TestApplyDiffStrategies(t *testing.T) {
 	// create a test file that might require different patch strategies
-	testFile := "test_strategies.go"
+	testFile := t.TempDir() + "/test_strategies.go"
 	originalContent := `package main
 
 import "fmt"
@@ -296,8 +296,9 @@ func main() {
 	defer os.Remove(testFile)
 
 	// create a proper unified diff - the line numbers and context must match exactly
-	diff := `--- test_strategies.go
-+++ test_strategies.go
+	fileName := "test_strategies.go"
+	diff := `--- ` + fileName + `
++++ ` + fileName + `
 @@ -4,5 +4,6 @@
  
  func main() {

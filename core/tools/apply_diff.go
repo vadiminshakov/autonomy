@@ -298,8 +298,6 @@ func applyPatchWithValidation(patchFile, targetFile string) (string, error) {
 
 			getTaskState().RecordFileModified(targetFile)
 
-			go autoValidateAfterFileChange(targetFile)
-
 			return fmt.Sprintf("diff applied successfully to %s", targetFile), nil
 		}
 

@@ -12,19 +12,18 @@ func init() {
 	Register("execute_command", ExecuteCommand)
 }
 
-// ExecuteCommand executes a shell command from args["command"].
+// ExecuteCommand executes a shell command from args["command"]
 func ExecuteCommand(args map[string]interface{}) (string, error) {
 	cmdStr, ok := args["command"].(string)
 	if !ok || strings.TrimSpace(cmdStr) == "" {
 		return "", fmt.Errorf("parameter 'command' must be a non-empty string")
 	}
 
-	// security check: prevent dangerous commands
 	if isDangerousCommand(cmdStr) {
 		return "", fmt.Errorf("execution of command '%s' is blocked for security reasons", cmdStr)
 	}
 
-	fmt.Printf("🔧 running command: %s\n", cmdStr)
+	fmt.Printf("running command: %s\n", cmdStr)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -32,7 +31,6 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 	out, err := cmd.CombinedOutput()
 
-	// Track command execution
 	state := getTaskState()
 	state.RecordCommandExecuted(cmdStr)
 
@@ -46,7 +44,6 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	return string(out), nil
 }
 
-// isDangerousCommand checks if a command is potentially dangerous
 func isDangerousCommand(cmd string) bool {
 	cmd = strings.ToLower(strings.TrimSpace(cmd))
 

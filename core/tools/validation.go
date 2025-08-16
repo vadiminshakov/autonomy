@@ -10,13 +10,8 @@ import (
 
 // FileValidator defines the interface for validating files after modification
 type FileValidator interface {
-	// Name returns the name of the validator
 	Name() string
-
-	// CanValidate returns true if this validator can handle the given file
 	CanValidate(filePath string) bool
-
-	// Validate performs validation on the file and returns any errors
 	Validate(ctx context.Context, filePath string) *ValidationResult
 }
 
@@ -53,7 +48,6 @@ func NewFileValidationEngine(config ValidationConfig) *FileValidationEngine {
 		config:     config,
 	}
 
-	// Register default validators
 	engine.RegisterValidator(&GoValidator{})
 	engine.RegisterValidator(&JavaScriptValidator{})
 	engine.RegisterValidator(&PythonValidator{})
@@ -71,7 +65,6 @@ func (fve *FileValidationEngine) RegisterValidator(validator FileValidator) {
 func (fve *FileValidationEngine) ValidateFile(ctx context.Context, filePath string) []*ValidationResult {
 	var results []*ValidationResult
 
-	// Set timeout context
 	if fve.config.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, fve.config.Timeout)
@@ -83,7 +76,6 @@ func (fve *FileValidationEngine) ValidateFile(ctx context.Context, filePath stri
 			result := validator.Validate(ctx, filePath)
 			results = append(results, result)
 
-			// Skip remaining validators if there are errors and SkipOnErrors is true
 			if fve.config.SkipOnErrors && !result.Success {
 				break
 			}
@@ -154,9 +146,9 @@ func FormatValidationResults(results map[string][]*ValidationResult) string {
 
 		for _, result := range fileResults {
 			if result.Success {
-				output.WriteString(fmt.Sprintf("  ✅ %s (%.2fs)\n", result.ValidatorName, result.Duration.Seconds()))
+				output.WriteString(fmt.Sprintf("  %s (%.2fs)\n", result.ValidatorName, result.Duration.Seconds()))
 			} else {
-				output.WriteString(fmt.Sprintf("  ❌ %s (%.2fs)\n", result.ValidatorName, result.Duration.Seconds()))
+				output.WriteString(fmt.Sprintf("  %s (%.2fs)\n", result.ValidatorName, result.Duration.Seconds()))
 			}
 
 			for _, err := range result.Errors {

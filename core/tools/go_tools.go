@@ -14,7 +14,6 @@ func init() {
 	Register("go_vet", GoVet)
 }
 
-// GoTest runs `go test` for the provided path (defaults to ./...)
 func GoTest(args map[string]interface{}) (string, error) {
 	path, _ := args["path"].(string)
 	if path == "" {
@@ -36,7 +35,6 @@ func GoTest(args map[string]interface{}) (string, error) {
 		return out.String(), fmt.Errorf("go test failed: %v", err)
 	}
 
-	// summarize result: count of PASS/FAIL
 	summaryLines := []string{}
 	for _, line := range strings.Split(out.String(), "\n") {
 		if strings.HasPrefix(line, "ok ") || strings.HasPrefix(line, "FAIL") {
@@ -47,7 +45,6 @@ func GoTest(args map[string]interface{}) (string, error) {
 	return strings.Join(summaryLines, "\n"), nil
 }
 
-// GoVet runs `go vet` for the provided path (defaults to ./...)
 func GoVet(args map[string]interface{}) (string, error) {
 	path, _ := args["path"].(string)
 	if path == "" {

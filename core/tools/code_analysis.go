@@ -13,7 +13,6 @@ func init() {
 	Register("analyze_code_go", AnalyzeCodeGo)
 }
 
-// AnalyzeCode analyzes Go code structure and complexity before suggesting changes
 func AnalyzeCodeGo(args map[string]interface{}) (string, error) {
 	pathVal, ok := args["path"].(string)
 	if !ok {
@@ -36,14 +35,12 @@ func AnalyzeCodeGo(args map[string]interface{}) (string, error) {
 	return analysis, nil
 }
 
-// analyzeGoFile performs detailed analysis of a Go file
 func analyzeGoFile(node *ast.File, fset *token.FileSet) string {
 	var result strings.Builder
 
 	result.WriteString(fmt.Sprintf("Package: %s\n", node.Name.Name))
 	result.WriteString(fmt.Sprintf("Imports: %d\n", len(node.Imports)))
 
-	// count declarations
 	var (
 		typeCount    int
 		funcCount    int
@@ -54,7 +51,6 @@ func analyzeGoFile(node *ast.File, fset *token.FileSet) string {
 		totalLines   int
 	)
 
-	// analyze each declaration
 	for _, decl := range node.Decls {
 		switch d := decl.(type) {
 		case *ast.GenDecl:
@@ -81,7 +77,6 @@ func analyzeGoFile(node *ast.File, fset *token.FileSet) string {
 		}
 	}
 
-	// calculate total lines
 	if len(node.Decls) > 0 {
 		lastDecl := node.Decls[len(node.Decls)-1]
 		totalLines = fset.Position(lastDecl.End()).Line
@@ -97,11 +92,9 @@ func analyzeGoFile(node *ast.File, fset *token.FileSet) string {
 		result.WriteString(fmt.Sprintf("Largest function: %s (%d lines)\n", maxFuncName, maxFuncLines))
 	}
 
-	// complexity assessment
 	complexity := assessComplexity(totalLines, funcCount, maxFuncLines)
 	result.WriteString(fmt.Sprintf("Complexity: %s\n", complexity))
 
-	// recommendations
 	recommendations := generateRecommendations(totalLines, funcCount, maxFuncLines, typeCount)
 	if recommendations != "" {
 		result.WriteString(fmt.Sprintf("Recommendations: %s\n", recommendations))
@@ -110,7 +103,6 @@ func analyzeGoFile(node *ast.File, fset *token.FileSet) string {
 	return result.String()
 }
 
-// assessComplexity determines if code is appropriately complex
 func assessComplexity(totalLines, funcCount, maxFuncLines int) string {
 	if totalLines < 50 {
 		return "LOW - Simple, well-structured"
@@ -127,7 +119,6 @@ func assessComplexity(totalLines, funcCount, maxFuncLines int) string {
 	return "VERY HIGH - Consider refactoring"
 }
 
-// generateRecommendations provides specific suggestions
 func generateRecommendations(totalLines, funcCount, maxFuncLines, typeCount int) string {
 	var recommendations []string
 
