@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// Tools considered "silent" – output is shown in truncated form
 var silentTools = map[string]bool{
 	"read_file":             true,
 	"write_file":            true,
@@ -16,14 +15,10 @@ var silentTools = map[string]bool{
 	"go_vet":                true,
 }
 
-// isSilentTool checks if tool output should be summarized
 func isSilentTool(name string) bool {
 	return silentTools[name]
 }
 
-// silentToolSummary generates a concise summary for silent tool results
-//
-//nolint:gocyclo
 func silentToolSummary(toolName string, args map[string]any, result string) string {
 	switch toolName {
 	case "read_file":

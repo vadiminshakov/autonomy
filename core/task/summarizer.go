@@ -33,8 +33,6 @@ func NewTaskSummarizer() *TaskSummarizer {
 }
 
 // GenerateSummary creates a summary from execution plan
-//
-//nolint:gocyclo
 func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummary {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -48,13 +46,11 @@ func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummar
 		ParallelGroups: len(plan.ParallelGroups),
 	}
 
-	// calculate statistics and collect information
 	var startTime, endTime *time.Time
 	filesModifiedMap := make(map[string]bool)
 	filesReadMap := make(map[string]bool)
 
 	for _, step := range plan.Steps {
-		// track step status
 		switch step.Status {
 		case types.StepStatusCompleted:
 			summary.CompletedSteps++
@@ -65,7 +61,6 @@ func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummar
 			}
 		}
 
-		// track execution time
 		if step.StartTime != nil {
 			if startTime == nil || step.StartTime.Before(*startTime) {
 				startTime = step.StartTime
@@ -77,7 +72,6 @@ func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummar
 			}
 		}
 
-		// track files
 		if path := ts.getFilePath(step); path != "" {
 			switch step.ToolName {
 			case "read_file":
@@ -87,7 +81,6 @@ func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummar
 			}
 		}
 
-		// extract key findings
 		if step.Status == types.StepStatusCompleted && step.Result != "" {
 			findings := ts.extractKeyFindings(step)
 			if len(findings) > 0 {
@@ -96,7 +89,6 @@ func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummar
 		}
 	}
 
-	// convert maps to slices
 	for file := range filesModifiedMap {
 		summary.FilesModified = append(summary.FilesModified, file)
 	}
@@ -104,7 +96,6 @@ func (ts *TaskSummarizer) GenerateSummary(plan *types.ExecutionPlan) *TaskSummar
 		summary.FilesRead = append(summary.FilesRead, file)
 	}
 
-	// calculate total execution time
 	if startTime != nil && endTime != nil {
 		summary.ExecutionTime = endTime.Sub(*startTime)
 	}
@@ -156,7 +147,6 @@ func (ts *TaskSummarizer) FormatSummary(summary *TaskSummary) string {
 	return sb.String()
 }
 
-// getFilePath extracts file path from step arguments
 func (ts *TaskSummarizer) getFilePath(step *types.ExecutionStep) string {
 	if path, ok := step.Args["path"].(string); ok {
 		return path
@@ -167,7 +157,6 @@ func (ts *TaskSummarizer) getFilePath(step *types.ExecutionStep) string {
 	return ""
 }
 
-// extractKeyFindings extracts key findings from step results
 func (ts *TaskSummarizer) extractKeyFindings(step *types.ExecutionStep) []string {
 	var findings []string
 
@@ -183,7 +172,6 @@ func (ts *TaskSummarizer) extractKeyFindings(step *types.ExecutionStep) []string
 	return findings
 }
 
-// extractAnalysisFindings extracts findings from code analysis results
 func (ts *TaskSummarizer) extractAnalysisFindings(result string) []string {
 	var findings []string
 
@@ -202,7 +190,6 @@ func (ts *TaskSummarizer) extractAnalysisFindings(result string) []string {
 	return findings
 }
 
-// extractSearchFindings extracts findings from search results
 func (ts *TaskSummarizer) extractSearchFindings(toolName, result string) []string {
 	var findings []string
 
@@ -211,7 +198,6 @@ func (ts *TaskSummarizer) extractSearchFindings(toolName, result string) []strin
 		return findings
 	}
 
-	// extract match count if available
 	for _, line := range strings.Split(result, "\n") {
 		if strings.Contains(line, "Found") && strings.Contains(line, "matches") {
 			findings = append(findings, strings.TrimSpace(line))
@@ -222,7 +208,6 @@ func (ts *TaskSummarizer) extractSearchFindings(toolName, result string) []strin
 	return findings
 }
 
-// extractTestFindings extracts findings from test/vet results
 func (ts *TaskSummarizer) extractTestFindings(toolName, result string) []string {
 	var findings []string
 
@@ -234,7 +219,6 @@ func (ts *TaskSummarizer) extractTestFindings(toolName, result string) []string 
 			findings = append(findings, "All tests passed")
 		}
 
-		// extract test coverage if available
 		for _, line := range strings.Split(result, "\n") {
 			if strings.Contains(line, "coverage") {
 				findings = append(findings, strings.TrimSpace(line))

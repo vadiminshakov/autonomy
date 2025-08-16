@@ -254,7 +254,7 @@ func (im *IndexManager) StartAutoRebuild() {
 	defer im.mu.Unlock()
 
 	if im.autoRebuild {
-		return // already running
+		return
 	}
 
 	im.ticker = time.NewTicker(20 * time.Minute)
@@ -281,7 +281,6 @@ func (im *IndexManager) StopAutoRebuild() {
 	ui.ShowIndexStatus("Index auto-rebuild stopped")
 }
 
-// periodicRebuild runs in background and rebuilds index every 20 minutes
 func (im *IndexManager) periodicRebuild() {
 	for {
 		select {

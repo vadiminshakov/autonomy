@@ -12,7 +12,6 @@ import (
 	"github.com/vadiminshakov/autonomy/ui"
 )
 
-// ExecutionResult represents the result of a tool execution
 type ExecutionResult struct {
 	StepID   string
 	ToolName string
@@ -21,14 +20,12 @@ type ExecutionResult struct {
 	Duration time.Duration
 }
 
-// ParallelExecutor manages parallel execution of tools
 type ParallelExecutor struct {
 	maxWorkers int
 	timeout    time.Duration
 	planner    *Planner
 }
 
-// NewParallelExecutor creates a new parallel executor
 func NewParallelExecutor(maxWorkers int, timeout time.Duration) *ParallelExecutor {
 	return &ParallelExecutor{
 		maxWorkers: maxWorkers,
@@ -37,24 +34,17 @@ func NewParallelExecutor(maxWorkers int, timeout time.Duration) *ParallelExecuto
 	}
 }
 
-// ExecutePlan executes an execution plan with parallel processing
 func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *types.ExecutionPlan) error {
-	fmt.Println(ui.Tool(fmt.Sprintf("Executing plan with %d steps...", len(plan.Steps))))
-
 	for !pe.planner.IsCompleted(plan) {
-		// get steps that are ready to execute
 		readySteps := pe.planner.GetReadySteps(plan)
 		if len(readySteps) == 0 {
-			// check if we're stuck (no ready steps but plan not completed)
 			if pe.planner.HasFailures(plan) {
 				return fmt.Errorf("execution plan failed - some steps could not be completed")
 			}
-			// wait a bit and check again (shouldn't happen with proper dependency analysis)
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 
-		// execute ready steps in parallel
 		if err := pe.executeStepsParallel(ctx, plan, readySteps); err != nil {
 			return fmt.Errorf("parallel execution failed: %v", err)
 		}
@@ -64,12 +54,9 @@ func (pe *ParallelExecutor) ExecutePlan(ctx context.Context, plan *types.Executi
 		return fmt.Errorf("execution plan completed with failures")
 	}
 
-	fmt.Println(ui.Success("Plan execution completed successfully"))
-
 	return nil
 }
 
-// executeStepsParallel executes multiple steps in parallel
 func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *types.ExecutionPlan, steps []*types.ExecutionStep) error {
 	if len(steps) == 0 {
 		return nil
@@ -103,7 +90,6 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *type
 		close(resultChan)
 	}()
 
-	// Process results as they come in
 	var toolErrors []error
 	completedCount := 0
 
@@ -116,24 +102,20 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *type
 		} else {
 			pe.planner.SetStepResult(plan, result.StepID, result.Result, nil)
 
-			// show result based on tool type
 			if isSilentTool(result.ToolName) {
-				// for silent tools, show summary
 				step := pe.findStepInPlan(plan, result.StepID)
 				if step != nil {
 					summary := silentToolSummary(result.ToolName, step.Args, result.Result)
-					fmt.Println(ui.Success("✅ "+result.ToolName) + summary)
+					fmt.Println(ui.Success(result.ToolName) + summary)
 				}
 			} else {
-				fmt.Println(ui.Success(fmt.Sprintf("✅ %s completed", result.ToolName)))
+				fmt.Println(ui.Success(fmt.Sprintf("%s completed", result.ToolName)))
 				if result.Result != "" {
 					truncatedResult := limitToolOutput(result.Result)
 					fmt.Printf("%s\n", ui.Dim("Result: "+truncatedResult))
 				}
 			}
 		}
-
-		fmt.Printf("%s\n", ui.Info(fmt.Sprintf("Progress: %d/%d steps completed", completedCount, len(steps))))
 	}
 
 	if len(toolErrors) > 0 {
@@ -143,7 +125,6 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *type
 	return nil
 }
 
-// worker is a worker goroutine that executes steps
 func (pe *ParallelExecutor) worker(
 	ctx context.Context,
 	wg *sync.WaitGroup,
@@ -168,16 +149,13 @@ func (pe *ParallelExecutor) worker(
 	}
 }
 
-// executeStep executes a single step
 func (pe *ParallelExecutor) executeStep(ctx context.Context, step *types.ExecutionStep) ExecutionResult {
 	startTime := time.Now()
 
-	// get appropriate timeout for this tool
 	timeout := pe.getToolTimeout(step.ToolName)
 	toolCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// execute the tool
 	result, err := pe.executeToolWithTimeout(toolCtx, step.ToolName, step.Args)
 	duration := time.Since(startTime)
 
@@ -190,7 +168,6 @@ func (pe *ParallelExecutor) executeStep(ctx context.Context, step *types.Executi
 	}
 }
 
-// executeToolWithTimeout executes a tool with timeout handling
 func (pe *ParallelExecutor) executeToolWithTimeout(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	resultChan := make(chan struct {
 		res string
@@ -213,7 +190,6 @@ func (pe *ParallelExecutor) executeToolWithTimeout(ctx context.Context, toolName
 	}
 }
 
-// getToolTimeout returns appropriate timeout for different tool types
 func (pe *ParallelExecutor) getToolTimeout(toolName string) time.Duration {
 	longRunningTools := map[string]time.Duration{
 		"build_index":     5 * time.Minute,
@@ -227,11 +203,9 @@ func (pe *ParallelExecutor) getToolTimeout(toolName string) time.Duration {
 		return timeout
 	}
 
-	// default timeout for regular tools
 	return 30 * time.Second
 }
 
-// findStepInPlan finds a step by id in the execution plan
 func (pe *ParallelExecutor) findStepInPlan(plan *types.ExecutionPlan, stepID string) *types.ExecutionStep {
 	plan.Mu.RLock()
 	defer plan.Mu.RUnlock()

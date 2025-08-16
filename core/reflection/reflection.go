@@ -5,35 +5,27 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vadiminshakov/autonomy/core/ai"
 	"github.com/vadiminshakov/autonomy/core/entity"
 	"github.com/vadiminshakov/autonomy/core/types"
 )
 
-// ReflectionResult represents the result of reflection evaluation
 type ReflectionResult struct {
 	TaskCompleted bool   `json:"task_completed"`
 	Reason        string `json:"reason"`
 	ShouldRetry   bool   `json:"should_retry"`
 }
 
-// AIClient interface for reflection system
-type AIClient interface {
-	GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error)
-}
-
-// ReflectionEngine evaluates if task was completed correctly
 type ReflectionEngine struct {
-	aiClient AIClient
+	aiClient ai.AIClient
 }
 
-// NewReflectionEngine creates a new simple reflection engine
-func NewReflectionEngine(aiClient AIClient) *ReflectionEngine {
+func NewReflectionEngine(aiClient ai.AIClient) *ReflectionEngine {
 	return &ReflectionEngine{
 		aiClient: aiClient,
 	}
 }
 
-// EvaluateCompletion checks if the task was completed correctly
 func (sre *ReflectionEngine) EvaluateCompletion(
 	ctx context.Context,
 	plan *types.ExecutionPlan,
@@ -43,14 +35,12 @@ func (sre *ReflectionEngine) EvaluateCompletion(
 
 	response, err := sre.aiClient.GenerateCode(ctx, promptData)
 	if err != nil {
-		// fallback to simple rule-based evaluation
 		return sre.simpleEvaluation(plan), nil
 	}
 
 	return sre.parseResponse(response.Content), nil
 }
 
-// createEvaluationPrompt creates prompt for evaluating task completion
 func (sre *ReflectionEngine) createEvaluationPrompt(plan *types.ExecutionPlan, originalTask string) entity.PromptData {
 	var prompt strings.Builder
 
@@ -100,7 +90,6 @@ Consider:
 	}
 }
 
-// parseResponse extracts evaluation from AI response
 func (sre *ReflectionEngine) parseResponse(response string) *ReflectionResult {
 	result := &ReflectionResult{}
 
@@ -126,7 +115,6 @@ func (sre *ReflectionEngine) parseResponse(response string) *ReflectionResult {
 	return result
 }
 
-// simpleEvaluation provides fallback rule-based evaluation
 func (sre *ReflectionEngine) simpleEvaluation(plan *types.ExecutionPlan) *ReflectionResult {
 	plan.RLock()
 	defer plan.RUnlock()
@@ -151,7 +139,6 @@ func (sre *ReflectionEngine) simpleEvaluation(plan *types.ExecutionPlan) *Reflec
 	totalSteps := len(plan.Steps)
 	successRate := float64(successCount) / float64(totalSteps)
 
-	// Task is completed if attempt_completion succeeded or high success rate
 	taskCompleted := completionSucceeded || (successRate >= 0.8 && !hasAttemptCompletion)
 
 	var reason string
