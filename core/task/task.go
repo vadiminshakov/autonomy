@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/vadiminshakov/autonomy/core/ai"
 	"github.com/vadiminshakov/autonomy/core/decomposition"
 	"github.com/vadiminshakov/autonomy/core/entity"
 	"github.com/vadiminshakov/autonomy/core/reflection"
@@ -29,7 +29,6 @@ type Config struct {
 	EnableFileValidation bool
 }
 
-// DefaultConfig returns default task configuration
 func defaultConfig() Config {
 	return Config{
 		MaxIterations:        100,
@@ -43,16 +42,9 @@ func defaultConfig() Config {
 	}
 }
 
-// AIClient abstracts AI model client
-//
-//go:generate mockgen -destination ../../mocks/ai_client_mock.go -package mocks autonomy/core/task AIClient
-type AIClient interface {
-	GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error)
-}
-
 // Task manages AI-driven task execution
 type Task struct {
-	client     AIClient
+	client     ai.AIClient
 	promptData *entity.PromptData
 	config     Config
 
@@ -64,15 +56,17 @@ type Task struct {
 	planner          *Planner
 	reflectionEngine *reflection.ReflectionEngine
 	originalTask     string
+
+	toolCallHistory map[string]int
 }
 
 // NewTask creates a new task with default configuration
-func NewTask(client AIClient) *Task {
+func NewTask(client ai.AIClient) *Task {
 	return NewTaskWithConfig(client, defaultConfig())
 }
 
 // NewTaskWithConfig creates a new task with custom configuration
-func NewTaskWithConfig(client AIClient, config Config) *Task {
+func NewTaskWithConfig(client ai.AIClient, config Config) *Task {
 	ctx, cancel := context.WithCancel(context.Background())
 	var reflectionEngine *reflection.ReflectionEngine
 	if config.EnableReflection {
@@ -87,6 +81,8 @@ func NewTaskWithConfig(client AIClient, config Config) *Task {
 		cancel:           cancel,
 		planner:          NewPlanner(),
 		reflectionEngine: reflectionEngine,
+
+		toolCallHistory: make(map[string]int),
 	}
 }
 
@@ -122,33 +118,56 @@ func (t *Task) ProcessTask() error {
 			return err
 		}
 
-		log.Printf("=== Task iteration %d/%d ===", iter+1, t.config.MaxIterations)
-
 		response, err := t.callAi()
 		if err != nil {
 			return t.handleAIError(err)
 		}
 
-		t.addAssistantMessage(response.Content)
+		if response.Content != "" {
+			fmt.Printf("AI: %s\n", response.Content)
+		}
+
+		if len(response.ToolCalls) > 0 {
+			for _, call := range response.ToolCalls {
+				argsStr := ""
+				if len(call.Args) > 0 {
+					args := make([]string, 0, len(call.Args))
+					for k, v := range call.Args {
+						if k != "_enhanced_metadata" {
+							args = append(args, fmt.Sprintf("%s: %v", k, v))
+						}
+					}
+					if len(args) > 0 {
+						argsStr = " (" + strings.Join(args, ", ") + ")"
+					}
+				}
+				fmt.Printf("Tool: %s%s\n", call.Name, argsStr)
+
+				if t.isToolCallLoop(call) {
+					fmt.Printf("Warning: Tool %s called too many times. This may indicate a loop.\n", call.Name)
+				}
+			}
+		}
 
 		if len(response.ToolCalls) == 0 {
+			t.addAssistantMessage(response.Content)
 			if shouldAbort := t.handleNoTools(); shouldAbort {
 				return errors.New("ai did not provide tool invocations after multiple attempts")
 			}
 			continue
 		}
 
+		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
+
 		var toolNames []string
 		for _, call := range response.ToolCalls {
 			toolNames = append(toolNames, call.Name)
 		}
-		log.Printf("AI requested tools: %s", strings.Join(toolNames, ", "))
 
 		t.resetNoToolCount()
 
 		done, err := t.executeTools(response.ToolCalls)
 		if err != nil {
-			log.Printf("Tool execution error: %v", err)
 			continue
 		}
 
@@ -164,7 +183,6 @@ func (t *Task) ProcessTask() error {
 	return nil
 }
 
-// callAi gets response from AI with rate limiting
 func (t *Task) callAi() (*entity.AIResponse, error) {
 	ctx, cancel := context.WithTimeout(t.ctx, t.config.AICallTimeout)
 	defer cancel()
@@ -184,22 +202,22 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 	return response, nil
 }
 
-// executeTools runs tool calls
 func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
+	// сначала проверяем, есть ли декомпозированная задача
 	if plan := t.getPlanFromDecompositionIfExists(); plan != nil {
 		return t.executePlan(plan)
 	}
 
-	if t.shouldUsePlanning(calls) {
+	// простая логика: если больше одного инструмента или есть зависимости - используем план
+	if len(calls) > 1 || t.hasComplexDependencies(calls) {
 		plan := t.planner.CreatePlan(calls)
 		return t.executePlan(plan)
 	}
 
-	// fall back to sequential execution for simple tasks
+	// иначе выполняем последовательно
 	return t.executeSequential(calls)
 }
 
-// getPlanFromDecompositionIfExists retrieves a stored execution plan if available
 func (t *Task) getPlanFromDecompositionIfExists() *types.ExecutionPlan {
 	if !hasDecomposedTask() {
 		return nil
@@ -207,26 +225,22 @@ func (t *Task) getPlanFromDecompositionIfExists() *types.ExecutionPlan {
 
 	decomposedTask, err := getDecomposedTask()
 	if err != nil {
-		log.Printf("Error retrieving decomposed task: %v", err)
+		return nil
 	}
 
 	toolCalls := decomposedTask.ConvertToToolCalls()
 	plan := t.planner.CreatePlan(toolCalls)
 	clearDecomposedTask()
 
-	log.Printf("Created execution plan from decomposed task: %s", decomposedTask.OriginalTask)
 	fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
 	return plan
 }
 
-// shouldUsePlanning determines if a task should use planning based on complexity
 func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
-	// use planning for tasks with multiple tools
 	if len(calls) >= 2 {
 		return true
 	}
 
-	// use planning for tasks that involve file analysis and modification
 	hasAnalysis := false
 	hasModification := false
 
@@ -242,68 +256,46 @@ func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
 	return hasAnalysis && hasModification
 }
 
-// executePlan executes an execution plan using parallel execution
 func (t *Task) executePlan(plan *types.ExecutionPlan) (bool, error) {
-	fmt.Println(ui.Tool(fmt.Sprintf("Executing plan with %d steps...", len(plan.Steps))))
-	startTime := time.Now()
+	fmt.Printf("Executing plan with %d steps...\n", len(plan.Steps))
 
+	// используем параллельный исполнитель
 	executor := NewParallelExecutor(4, 5*time.Minute)
+
+	// выполняем план
 	err := executor.ExecutePlan(t.ctx, plan)
 	if err != nil {
+		fmt.Printf("Plan execution error: %v\n", err)
 		return false, err
 	}
 
+	// добавляем результаты в историю
 	t.addPlanResultsToHistory(plan)
 
-	// perform file validation if enabled
-	if t.config.EnableFileValidation {
-		validationStartTime := time.Now()
-		validationResults, err := tools.Execute("validate_modified_files", map[string]interface{}{})
-		if err != nil {
-			log.Printf("File validation error: %v", err)
-		} else {
-			validationTime := time.Since(validationStartTime)
-			log.Printf("File validation completed in %v", validationTime)
-			if validationResults != "" {
-				log.Printf("Validation results:\n%s", validationResults)
-			}
-		}
-	}
-
-	// perform reflection if enabled
-	if t.config.EnableReflection && t.reflectionEngine != nil && t.originalTask != "" {
-		executionTime := time.Since(startTime)
-		reflection, err := t.reflectionEngine.EvaluateCompletion(t.ctx, plan, t.originalTask)
-		if err != nil {
-			log.Printf("Reflection error: %v", err)
-		} else {
-			log.Printf("Reflection completed in %v", executionTime)
-			t.handleReflectionResult(reflection)
-		}
-	}
-
+	// проверяем завершение
 	return t.checkCompletion(plan), nil
 }
 
-// executeSequential runs tool calls sequentially (fallback)
 func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
+	fmt.Printf("Executing %d tools sequentially...\n", len(calls))
+
 	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
 	defer cancel()
 
-	for _, call := range calls {
+	for i, call := range calls {
 		if err := t.checkContext(ctx); err != nil {
 			return false, err
 		}
 
-		fmt.Printf("%s\n", ui.Blue(fmt.Sprintf("📋 Tool %s", call.Name)))
+		fmt.Printf("Tool %d/%d: %s\n", i+1, len(calls), call.Name)
 
-		spinner := ui.ShowToolExecution(call.Name)
-
+		// выполняем инструмент
 		result, err := t.exec(ctx, call)
 
-		spinner.Stop()
+		// обрабатываем результат
 		t.handleToolResult(call, result, err)
 
+		// проверяем завершение
 		if call.Name == "attempt_completion" && err == nil {
 			return true, nil
 		}
@@ -312,7 +304,57 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 	return false, nil
 }
 
-// checkCompletion checks if the execution plan indicates task completion
+// hasComplexDependencies проверяет, есть ли сложные зависимости между инструментами
+func (t *Task) hasComplexDependencies(calls []entity.ToolCall) bool {
+	// проверяем, есть ли операции чтения и записи одних и тех же файлов
+	fileOps := make(map[string][]string)
+
+	for _, call := range calls {
+		var args map[string]any
+		if call.Args != nil {
+			args = call.Args
+		}
+
+		// извлекаем путь к файлу
+		var path string
+		for _, key := range []string{"path", "file", "fileName", "file_path"} {
+			if p, ok := args[key].(string); ok {
+				path = p
+				break
+			}
+		}
+
+		if path != "" {
+			fileOps[path] = append(fileOps[path], call.Name)
+		}
+	}
+
+	// если есть несколько операций с одним файлом - нужен план
+	for _, ops := range fileOps {
+		if len(ops) > 1 {
+			return true
+		}
+	}
+
+	// проверяем наличие операций, требующих последовательности
+	hasAnalysis := false
+	hasModification := false
+
+	for _, call := range calls {
+		switch call.Name {
+		case "read_file", "analyze_code_go", "search_dir", "search_index":
+			hasAnalysis = true
+		case "write_file", "apply_diff":
+			hasModification = true
+		case "go_test", "go_vet":
+			// тесты всегда требуют зависимостей
+			return true
+		}
+	}
+
+	return hasAnalysis && hasModification
+}
+
 func (t *Task) checkCompletion(plan *types.ExecutionPlan) bool {
 	for _, step := range plan.Steps {
 		if step.ToolName == "attempt_completion" && step.Status == types.StepStatusCompleted {
@@ -322,8 +364,21 @@ func (t *Task) checkCompletion(plan *types.ExecutionPlan) bool {
 	return false
 }
 
-// exec executes a single tool
 func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
+	// Check if tool is available before execution
+	availableTools := tools.List()
+	toolExists := false
+	for _, tool := range availableTools {
+		if tool == call.Name {
+			toolExists = true
+			break
+		}
+	}
+
+	if !toolExists {
+		return "", fmt.Errorf("tool %s is not available", call.Name)
+	}
+
 	timeout := t.getToolTimeout(call.Name)
 	toolCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -349,7 +404,6 @@ func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
 	}
 }
 
-// getToolTimeout returns appropriate timeout for different tool types
 func (t *Task) getToolTimeout(toolName string) time.Duration {
 	longRunningTools := map[string]time.Duration{
 		"decompose_task":  9 * time.Minute,
@@ -366,23 +420,21 @@ func (t *Task) getToolTimeout(toolName string) time.Duration {
 	return t.config.ToolTimeout
 }
 
-// handleToolResult processes tool execution result
 func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) {
 	if err != nil {
 		fmt.Println(ui.Error(fmt.Sprintf("Error running %s: %v", call.Name, err)))
 		if result != "" && !isSilentTool(call.Name) {
 			fmt.Printf("%s\n", ui.Dim("Result: "+result))
 		}
-		t.addUserMessage(fmt.Sprintf("Error executing %s: %v. Result: %s", call.Name, err, result))
-
+		t.promptData.AddToolResponse(call.ID, fmt.Sprintf("Error: %v. Result: %s", err, result))
 		return
 	}
 
 	if isSilentTool(call.Name) {
 		summary := silentToolSummary(call.Name, call.Args, result)
-		fmt.Println(ui.Success("Done "+call.Name) + summary)
+		fmt.Println(ui.Success("✓ "+call.Name) + summary)
 	} else {
-		fmt.Println(ui.Success("Done " + call.Name))
+		fmt.Println(ui.Success("✓ " + call.Name))
 
 		if call.Name == "find_files" {
 			argsInfo := formatFindFilesArgs(call.Args)
@@ -396,21 +448,26 @@ func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) 
 				fmt.Println(ui.Info(result))
 			} else {
 				result = limitToolOutput(result)
-				fmt.Printf("%s\n", ui.Dim("Result: "+result))
+				fmt.Printf("Tool result: %s\n", result)
 			}
 		}
 	}
 
-	t.addUserMessage(fmt.Sprintf("Result of %s: %s", call.Name, result))
+	t.promptData.AddToolResponse(call.ID, result)
 }
 
-// limitToolOutput truncates tool output if it's too verbose
 func limitToolOutput(result string) string {
-	maxLines := 10
+	maxLines := 20
+	maxChars := 2000
+
+	if len(result) > maxChars {
+		result = result[:maxChars] + "\n... [truncated]"
+	}
+
 	lines := strings.Split(result, "\n")
 	if len(lines) > maxLines {
 		truncated := strings.Join(lines[:maxLines], "\n")
-		return truncated + "\n..."
+		return truncated + "\n... [truncated]"
 	}
 
 	return result
@@ -452,7 +509,6 @@ func (t *Task) addUserMessage(message string) {
 
 func (t *Task) trimHistoryIfNeeded() {
 	if len(t.promptData.Messages) > t.config.MaxHistorySize {
-		// cut half of MaxHistorySize from the start, but always keep the first message
 		cut := len(t.promptData.Messages) / 2
 
 		if cut < 1 {
@@ -462,7 +518,6 @@ func (t *Task) trimHistoryIfNeeded() {
 		contextMsg := t.contextCompaction(cut)
 
 		if contextMsg != "" {
-			// insert context message after the first message
 			summaryMsg := entity.Message{
 				Role:    "system",
 				Content: contextMsg,
@@ -478,25 +533,19 @@ func (t *Task) trimHistoryIfNeeded() {
 				t.promptData.Messages[cut+1:]...,
 			)
 		}
-
-		log.Printf("Trimmed %d old messages from history", cut)
 	}
 }
 
-// contextCompaction creates a summary of important context from messages being trimmed
 func (t *Task) contextCompaction(messagesToTrim int) string {
-	// extract key information from messages that will be trimmed
 	var toolsUsed []string
 	var filesModified []string
 	seenTools := make(map[string]bool)
 	seenFiles := make(map[string]bool)
 
-	// analyze messages that will be trimmed (skip first message)
 	for i := 1; i <= messagesToTrim && i < len(t.promptData.Messages); i++ {
 		msg := t.promptData.Messages[i]
 		content := strings.ToLower(msg.Content)
 
-		// extract tool usage
 		if strings.Contains(content, "result of ") {
 			parts := strings.Split(content, ":")
 			if len(parts) > 0 {
@@ -508,9 +557,7 @@ func (t *Task) contextCompaction(messagesToTrim int) string {
 			}
 		}
 
-		// extract file operations
 		if strings.Contains(content, "write_file") || strings.Contains(content, "apply_diff") {
-			// try to extract filename
 			if idx := strings.Index(content, "path:"); idx != -1 {
 				pathPart := content[idx+5:]
 				if endIdx := strings.IndexAny(pathPart, " \n,}"); endIdx != -1 {
@@ -524,7 +571,6 @@ func (t *Task) contextCompaction(messagesToTrim int) string {
 		}
 	}
 
-	// build context message
 	if len(toolsUsed) == 0 && len(filesModified) == 0 {
 		return ""
 	}
@@ -551,7 +597,6 @@ func (t *Task) handleNoTools() bool {
 	count := t.noToolCount
 	t.mu.Unlock()
 
-	// check if we've exceeded max attempts
 	if count >= t.config.MaxNoToolAttempts {
 		fmt.Println(ui.Warning("AI failed to use tools after multiple attempts. Aborting."))
 		return true
@@ -566,6 +611,22 @@ func (t *Task) resetNoToolCount() {
 	t.mu.Lock()
 	t.noToolCount = 0
 	t.mu.Unlock()
+}
+
+func (t *Task) isToolCallLoop(call entity.ToolCall) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	key := call.Name
+	if call.Args != nil {
+		argsStr := fmt.Sprintf("%v", call.Args)
+		key += "_" + argsStr
+	}
+
+	count := t.toolCallHistory[key]
+	t.toolCallHistory[key] = count + 1
+
+	return count >= 3
 }
 
 func (t *Task) forceToolUsage() {
@@ -583,16 +644,30 @@ func (t *Task) copyPromptData() entity.PromptData {
 
 func (t *Task) handleAIError(err error) error {
 	fmt.Println(ui.Error("AI error: " + err.Error()))
+
+	if strings.Contains(err.Error(), "400 Bad Request") {
+		fmt.Println(ui.Warning("This usually means:"))
+		fmt.Println(ui.Dim("   • The model doesn't support function calling"))
+		fmt.Println(ui.Dim("   • The request format is incompatible"))
+		fmt.Println(ui.Dim("   • Try using a different model or provider"))
+	} else if strings.Contains(err.Error(), "401") {
+		fmt.Println(ui.Warning("This usually means:"))
+		fmt.Println(ui.Dim("   • API key is invalid or expired"))
+		fmt.Println(ui.Dim("   • Check your configuration"))
+	} else if strings.Contains(err.Error(), "429") {
+		fmt.Println(ui.Warning("This usually means:"))
+		fmt.Println(ui.Dim("   • Rate limit exceeded"))
+		fmt.Println(ui.Dim("   • Wait a moment and try again"))
+	}
+
 	fmt.Println(ui.Info("Please try again or rephrase the request"))
 
 	return err
 }
 
-// formatFindFilesArgs formats arguments for find_files tool display
 func formatFindFilesArgs(args map[string]any) string {
 	var parts []string
 
-	// extract path argument
 	if path, ok := args["path"].(string); ok && path != "" {
 		if path == "." {
 			parts = append(parts, "path: current directory")
@@ -601,12 +676,10 @@ func formatFindFilesArgs(args map[string]any) string {
 		}
 	}
 
-	// extract pattern argument
 	if pattern, ok := args["pattern"].(string); ok && pattern != "" {
 		parts = append(parts, fmt.Sprintf("pattern: %s", pattern))
 	}
 
-	// extract case_insensitive argument
 	if caseInsensitive, ok := args["case_insensitive"]; ok {
 		var isInsensitive bool
 		switch v := caseInsensitive.(type) {
@@ -623,7 +696,6 @@ func formatFindFilesArgs(args map[string]any) string {
 	return strings.Join(parts, ", ")
 }
 
-// addPlanResultsToHistory adds execution results from completed plan steps to AI conversation
 func (t *Task) addPlanResultsToHistory(plan *types.ExecutionPlan) {
 	plan.Mu.RLock()
 	defer plan.Mu.RUnlock()
@@ -631,6 +703,7 @@ func (t *Task) addPlanResultsToHistory(plan *types.ExecutionPlan) {
 	for _, step := range plan.Steps {
 		if step.Status == types.StepStatusCompleted || step.Status == types.StepStatusFailed {
 			call := entity.ToolCall{
+				ID:   fmt.Sprintf("plan_%s", step.ID),
 				Name: step.ToolName,
 				Args: step.Args,
 			}
@@ -639,17 +712,16 @@ func (t *Task) addPlanResultsToHistory(plan *types.ExecutionPlan) {
 	}
 }
 
-// handleReflectionResult processes reflection evaluation and provides feedback
 func (t *Task) handleReflectionResult(reflection *reflection.ReflectionResult) {
 	if reflection.TaskCompleted {
-		fmt.Println(ui.Success("✅ Reflection: Task completed successfully"))
+		fmt.Println(ui.Success("Reflection: Task completed successfully"))
 		fmt.Printf("%s\n", ui.Info("Reason: "+reflection.Reason))
 	} else {
-		fmt.Println(ui.Warning("🤔 Reflection: Task may not be fully completed"))
+		fmt.Println(ui.Warning("Reflection: Task may not be fully completed"))
 		fmt.Printf("%s\n", ui.Info("Reason: "+reflection.Reason))
 
 		if reflection.ShouldRetry {
-			fmt.Println(ui.Info("💡 Suggestion: Consider continuing or retrying the task"))
+			fmt.Println(ui.Info("Suggestion: Consider continuing or retrying the task"))
 			t.addUserMessage("The reflection system suggests the task is not fully complete. Reason: " +
 				reflection.Reason + ". Please review and continue if needed.")
 		}
@@ -687,4 +759,11 @@ func clearDecomposedTask() {
 	state := tools.GetTaskState()
 	state.SetContext("has_decomposed_task", false)
 	state.SetContext("decomposed_task", nil)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

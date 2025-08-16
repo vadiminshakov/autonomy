@@ -8,6 +8,11 @@ type ToolFunc func(args map[string]interface{}) (string, error)
 
 var registry = make(map[string]ToolFunc)
 
+// ClearRegistry clears the registry (mainly for testing)
+func ClearRegistry() {
+	registry = make(map[string]ToolFunc)
+}
+
 func Register(name string, fn ToolFunc) {
 	registry[name] = fn
 }

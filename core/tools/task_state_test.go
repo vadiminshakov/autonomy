@@ -67,8 +67,14 @@ func TestTaskStateTools(t *testing.T) {
 	_, ok := stateData["start_time"]
 	require.True(t, ok, "Task state should contain start_time")
 
-	// test check_tool_usage tool
+	// test check_tool_usage tool for unused tool first
 	usage, err := checkToolUsage(map[string]interface{}{"tool": "test_tool"})
+	require.NoError(t, err, "check_tool_usage failed")
+	require.Contains(t, usage, "has not been used yet", "Unused tool check incorrect")
+
+	// test check_tool_usage tool after recording usage
+	state.RecordToolUse("test_tool", true, "success")
+	usage, err = checkToolUsage(map[string]interface{}{"tool": "test_tool"})
 	require.NoError(t, err, "check_tool_usage failed")
 	require.Contains(t, usage, "has been used 1 times", "Tool usage check incorrect")
 

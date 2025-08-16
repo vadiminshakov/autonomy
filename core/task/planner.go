@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -29,18 +30,28 @@ func (p *Planner) CreatePlan(toolCalls []entity.ToolCall) *types.ExecutionPlan {
 		Steps: make([]*types.ExecutionStep, 0, len(toolCalls)),
 	}
 
-	// convert tool calls to execution steps
 	for i, call := range toolCalls {
-		step := &types.ExecutionStep{
-			ID:           fmt.Sprintf("step_%d", i+1),
-			ToolName:     call.Name,
-			Args:         call.Args,
-			Dependencies: p.inferDependencies(call, toolCalls[:i]),
-			Status:       types.StepStatusPending,
-			Category:     p.categorizeStep(call.Name),
+		var args map[string]any
+		if call.Function.Arguments != "" {
+			json.Unmarshal([]byte(call.Function.Arguments), &args)
+		} else if call.Args != nil {
+			args = call.Args
 		}
 
-		// populate files affected based on tool arguments
+		toolName := call.Function.Name
+		if toolName == "" {
+			toolName = call.Name
+		}
+
+		step := &types.ExecutionStep{
+			ID:           fmt.Sprintf("step_%d", i+1),
+			ToolName:     toolName,
+			Args:         args,
+			Dependencies: p.inferDependencies(call, toolCalls[:i]),
+			Status:       types.StepStatusPending,
+			Category:     p.categorizeStep(toolName),
+		}
+
 		if files := p.extractFilesAffected(call); len(files) > 0 {
 			step.FilesAffected = files
 		}
@@ -48,56 +59,80 @@ func (p *Planner) CreatePlan(toolCalls []entity.ToolCall) *types.ExecutionPlan {
 		plan.Steps = append(plan.Steps, step)
 	}
 
-	// analyze dependencies and create parallel groups
 	plan.ParallelGroups = p.AnalyzeDependencies(plan)
 
 	return plan
 }
 
-// inferDependencies infers dependencies based on tool types and arguments
-//
-//nolint:gocyclo
 func (p *Planner) inferDependencies(current entity.ToolCall, previous []entity.ToolCall) []string {
 	var deps []string
 
-	// Rules for dependency inference:
-	switch current.Name {
-	case "analyze_code_go":
-		// analyze_code_go depends on read_file for the same file
-		if path, ok := current.Args["path"].(string); ok {
-			for i, prev := range previous {
-				if prev.Name == "read_file" {
-					if prevPath, ok := prev.Args["path"].(string); ok && prevPath == path {
-						deps = append(deps, fmt.Sprintf("step_%d", i+1))
-					}
-				}
-			}
+	// получаем аргументы текущего вызова
+	var currentArgs map[string]any
+	if current.Function.Arguments != "" {
+		json.Unmarshal([]byte(current.Function.Arguments), &currentArgs)
+	} else if current.Args != nil {
+		currentArgs = current.Args
+	}
+
+	// получаем путь к файлу из текущего вызова
+	currentPath := p.extractPathFromArgs(currentArgs)
+	currentToolName := current.Function.Name
+	if currentToolName == "" {
+		currentToolName = current.Name
+	}
+
+	// проверяем зависимости для каждого предыдущего инструмента
+	for i, prev := range previous {
+		var prevArgs map[string]any
+		if prev.Function.Arguments != "" {
+			json.Unmarshal([]byte(prev.Function.Arguments), &prevArgs)
+		} else if prev.Args != nil {
+			prevArgs = prev.Args
 		}
 
-	case "apply_diff":
-		// apply_diff depends on read_file for the same file
-		if path, ok := current.Args["path"].(string); ok {
-			for i, prev := range previous {
-				if prev.Name == "read_file" {
-					if prevPath, ok := prev.Args["path"].(string); ok && prevPath == path {
-						deps = append(deps, fmt.Sprintf("step_%d", i+1))
-					}
-				}
-			}
+		prevPath := p.extractPathFromArgs(prevArgs)
+		prevToolName := prev.Function.Name
+		if prevToolName == "" {
+			prevToolName = prev.Name
 		}
 
-	case "go_test", "go_vet":
-		// testing tools depend on any file modifications
-		for i, prev := range previous {
-			if prev.Name == "write_file" || prev.Name == "apply_diff" {
+		// зависимости для операций с файлами
+		if currentPath != "" && prevPath != "" {
+			// apply_diff зависит от write_file или read_file на том же файле
+			if currentToolName == "apply_diff" && currentPath == prevPath {
+				if prevToolName == "write_file" || prevToolName == "read_file" {
+					deps = append(deps, fmt.Sprintf("step_%d", i+1))
+				}
+			}
+
+			// read_file после write_file на том же файле
+			if currentToolName == "read_file" && prevToolName == "write_file" && currentPath == prevPath {
+				deps = append(deps, fmt.Sprintf("step_%d", i+1))
+			}
+
+			// любая операция с файлом зависит от make_dir для родительской директории
+			if prevToolName == "make_dir" && strings.HasPrefix(currentPath, prevPath) {
 				deps = append(deps, fmt.Sprintf("step_%d", i+1))
 			}
 		}
 
-	case "attempt_completion":
-		// attempt_completion depends on all analysis and modification steps
-		for i, prev := range previous {
-			if isAnalysisOrModificationTool(prev.Name) {
+		// тестирование и валидация после модификации
+		switch currentToolName {
+		case "go_test", "go_vet", "validate_files":
+			if prevToolName == "write_file" || prevToolName == "apply_diff" {
+				deps = append(deps, fmt.Sprintf("step_%d", i+1))
+			}
+
+		case "analyze_code_go":
+			// анализ после записи или чтения файла
+			if currentPath == prevPath && (prevToolName == "write_file" || prevToolName == "read_file") {
+				deps = append(deps, fmt.Sprintf("step_%d", i+1))
+			}
+
+		case "attempt_completion":
+			// завершение зависит от всех операций анализа и модификации
+			if isAnalysisOrModificationTool(prevToolName) {
 				deps = append(deps, fmt.Sprintf("step_%d", i+1))
 			}
 		}
@@ -106,7 +141,18 @@ func (p *Planner) inferDependencies(current entity.ToolCall, previous []entity.T
 	return deps
 }
 
-// isAnalysisOrModificationTool checks if a tool performs analysis or modification
+// extractPathFromArgs извлекает путь к файлу из аргументов инструмента
+func (p *Planner) extractPathFromArgs(args map[string]any) string {
+	// проверяем различные варианты названий параметра пути
+	pathKeys := []string{"path", "file", "fileName", "file_path", "target"}
+	for _, key := range pathKeys {
+		if path, ok := args[key].(string); ok && path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
 func isAnalysisOrModificationTool(toolName string) bool {
 	analysisTools := map[string]bool{
 		"read_file":             true,
@@ -132,7 +178,6 @@ func (p *Planner) AnalyzeDependencies(plan *types.ExecutionPlan) [][]string {
 			continue
 		}
 
-		// find all steps that can run in parallel with this step
 		parallelGroup := []string{step.ID}
 		processed[step.ID] = true
 
@@ -141,7 +186,6 @@ func (p *Planner) AnalyzeDependencies(plan *types.ExecutionPlan) [][]string {
 				continue
 			}
 
-			// check if steps can run in parallel
 			if p.canRunInParallel(step, otherStep, plan.Steps) {
 				parallelGroup = append(parallelGroup, otherStep.ID)
 				processed[otherStep.ID] = true
@@ -154,19 +198,15 @@ func (p *Planner) AnalyzeDependencies(plan *types.ExecutionPlan) [][]string {
 	return parallelGroups
 }
 
-// canRunInParallel checks if two steps can be executed in parallel
 func (p *Planner) canRunInParallel(step1, step2 *types.ExecutionStep, allSteps []*types.ExecutionStep) bool {
-	// steps cannot run in parallel if one depends on the other
 	if p.hasDependency(step1, step2, allSteps) || p.hasDependency(step2, step1, allSteps) {
 		return false
 	}
 
-	// steps that modify the same resource cannot run in parallel
 	if p.conflictingResources(step1, step2) {
 		return false
 	}
 
-	// some tools are inherently sequential
 	if p.isSequentialTool(step1.ToolName) || p.isSequentialTool(step2.ToolName) {
 		return false
 	}
@@ -174,16 +214,13 @@ func (p *Planner) canRunInParallel(step1, step2 *types.ExecutionStep, allSteps [
 	return true
 }
 
-// hasDependency checks if step1 depends on step2 (directly or indirectly)
 func (p *Planner) hasDependency(step1, step2 *types.ExecutionStep, allSteps []*types.ExecutionStep) bool {
-	// direct dependency
 	for _, dep := range step1.Dependencies {
 		if dep == step2.ID {
 			return true
 		}
 	}
 
-	// indirect dependency (recursive check)
 	for _, dep := range step1.Dependencies {
 		for _, step := range allSteps {
 			if step.ID == dep {
@@ -197,14 +234,11 @@ func (p *Planner) hasDependency(step1, step2 *types.ExecutionStep, allSteps []*t
 	return false
 }
 
-// conflictingResources checks if two steps access conflicting resources
 func (p *Planner) conflictingResources(step1, step2 *types.ExecutionStep) bool {
-	// check for file path conflicts
 	path1 := p.getFilePath(step1)
 	path2 := p.getFilePath(step2)
 
 	if path1 != "" && path2 != "" && path1 == path2 {
-		// same file - check if both are write operations
 		if p.isWriteOperation(step1.ToolName) && p.isWriteOperation(step2.ToolName) {
 			return true
 		}
@@ -213,7 +247,6 @@ func (p *Planner) conflictingResources(step1, step2 *types.ExecutionStep) bool {
 	return false
 }
 
-// getFilePath extracts file path from step arguments
 func (p *Planner) getFilePath(step *types.ExecutionStep) string {
 	if path, ok := step.Args["path"].(string); ok {
 		return path
@@ -224,7 +257,6 @@ func (p *Planner) getFilePath(step *types.ExecutionStep) string {
 	return ""
 }
 
-// isWriteOperation checks if a tool performs write operations
 func (p *Planner) isWriteOperation(toolName string) bool {
 	writeTools := map[string]bool{
 		"write_file": true,
@@ -233,11 +265,10 @@ func (p *Planner) isWriteOperation(toolName string) bool {
 	return writeTools[toolName]
 }
 
-// isSequentialTool checks if a tool must be executed sequentially
 func (p *Planner) isSequentialTool(toolName string) bool {
 	sequentialTools := map[string]bool{
 		"attempt_completion": true,
-		"execute_command":    true, // commands might have side effects
+		"execute_command":    true,
 	}
 	return sequentialTools[toolName]
 }
@@ -261,11 +292,22 @@ func (p *Planner) GetReadySteps(plan *types.ExecutionPlan) []*types.ExecutionSte
 			continue
 		}
 
-		// check if all dependencies are completed
 		allDepsCompleted := true
 		for _, depID := range step.Dependencies {
 			depStep := p.findStepByID(plan, depID)
-			if depStep == nil || depStep.Status != types.StepStatusCompleted {
+			if depStep == nil {
+				// логируем отсутствующую зависимость
+				fmt.Printf("WARNING: Dependency %s not found for step %s (%s)\n",
+					depID, step.ID, step.ToolName)
+				allDepsCompleted = false
+				break
+			}
+			if depStep.Status != types.StepStatusCompleted {
+				// логируем незавершённую зависимость
+				if depStep.Status == types.StepStatusFailed {
+					fmt.Printf("WARNING: Dependency %s failed for step %s (%s)\n",
+						depID, step.ID, step.ToolName)
+				}
 				allDepsCompleted = false
 				break
 			}
@@ -279,7 +321,6 @@ func (p *Planner) GetReadySteps(plan *types.ExecutionPlan) []*types.ExecutionSte
 	return readySteps
 }
 
-// findStepByID finds a step by its ID
 func (p *Planner) findStepByID(plan *types.ExecutionPlan, id string) *types.ExecutionStep {
 	for _, step := range plan.Steps {
 		if step.ID == id {
@@ -386,7 +427,6 @@ func (p *Planner) HasFailures(plan *types.ExecutionPlan) bool {
 	return false
 }
 
-// categorizeStep categorizes a step based on its tool name
 func (p *Planner) categorizeStep(toolName string) string {
 	switch toolName {
 	case "read_file", "search_dir", "search_index", "get_project_structure", "analyze_code_go", "get_function", "get_type", "get_package_info":
@@ -404,11 +444,9 @@ func (p *Planner) categorizeStep(toolName string) string {
 	}
 }
 
-// extractFilesAffected extracts files that will be affected by a tool call
 func (p *Planner) extractFilesAffected(call entity.ToolCall) []string {
 	var files []string
 
-	// extract file paths from different argument names
 	if path, ok := call.Args["path"].(string); ok && path != "" {
 		files = append(files, path)
 	}
