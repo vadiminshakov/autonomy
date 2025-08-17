@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"os"
 )
 
 type ToolFunc func(args map[string]interface{}) (string, error)
@@ -28,6 +29,11 @@ func Execute(name string, args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("tool %s not found. use 'get_task_state' to see available tools", name)
 	}
 
+	// логируем входные параметры для отладки (кроме больших значений)
+	if debugMode := getDebugMode(); debugMode {
+		logToolCall(name, args)
+	}
+
 	// validate common required parameters before execution
 	if err := validateToolArgs(name, args); err != nil {
 		return "", err
@@ -49,7 +55,7 @@ func Execute(name string, args map[string]interface{}) (string, error) {
 func validateToolArgs(toolName string, args map[string]interface{}) error {
 	// Basic validation for common tools
 	switch toolName {
-	case "read_file", "write_file", "apply_diff", "delete_file", "copy_file", "move_file":
+	case "read_file", "write_file", "lsp_edit", "delete_file", "copy_file", "move_file":
 		if _, ok := args["path"]; !ok {
 			return fmt.Errorf("tool %s requires 'path' parameter. example: {\"path\": \"file.txt\"}", toolName)
 		}
@@ -99,6 +105,28 @@ func contains(s, substr string) bool {
 		(s == substr ||
 			len(s) > len(substr) &&
 				(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr))
+}
+
+// getDebugMode проверяет включен ли режим отладки
+func getDebugMode() bool {
+	// можно включить через переменную окружения AUTONOMY_DEBUG=true
+	return os.Getenv("AUTONOMY_DEBUG") == "true"
+}
+
+// logToolCall логирует вызов инструмента с параметрами
+func logToolCall(name string, args map[string]interface{}) {
+	// ограничиваем размер логируемых значений
+	logArgs := make(map[string]interface{})
+	for k, v := range args {
+		if str, ok := v.(string); ok && len(str) > 200 {
+			logArgs[k] = str[:200] + "... (truncated)"
+		} else {
+			logArgs[k] = v
+		}
+	}
+
+	// записываем в stderr чтобы не смешивать с выводом программы
+	fmt.Fprintf(os.Stderr, "[DEBUG] Tool call: %s with args: %+v\n", name, logArgs)
 }
 
 func List() []string {

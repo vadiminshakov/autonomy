@@ -187,3 +187,10 @@ func (ts *TaskState) Reset() {
 	ts.LastToolResult = ""
 	ts.Context = make(map[string]interface{})
 }
+
+// ClearErrors очищает только ошибки, оставляя остальное состояние
+func (ts *TaskState) ClearErrors() {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.Errors = []string{}
+}

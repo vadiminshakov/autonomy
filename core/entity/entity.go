@@ -47,7 +47,8 @@ Available tools:
 - get_project_structure: explore the project layout
 - read_file: read a specific file with line numbers
 - write_file: create or modify files
-- apply_diff: apply changes to existing files
+- lsp_edit: edit files with precise line-based operations
+
 - search_dir: search for patterns in files
 - find_files: find files by name/pattern
 - execute_command: run shell commands

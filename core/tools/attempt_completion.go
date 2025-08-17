@@ -12,13 +12,33 @@ func init() {
 func AttemptCompletion(args map[string]interface{}) (string, error) {
 	result, _ := args["result"].(string)
 
-	// Record completion in task state
-	state := getTaskState()
-	state.SetContext("task_completed", "true")
-
+	// проверяем обязательный параметр
 	if result == "" {
-		return "🎉 TASK COMPLETED SUCCESSFULLY\n\n✅ All requirements have been fulfilled.\nNo further action is required.", nil
+		return "", fmt.Errorf("parameter 'result' is required for attempt_completion")
 	}
 
-	return fmt.Sprintf("🎉 TASK COMPLETED SUCCESSFULLY\n\n%s\n\n✅ All requirements have been fulfilled.\nNo further action is required.", result), nil
+	// do not allow completion if there are recorded errors
+	state := getTaskState()
+	if len(state.Errors) > 0 {
+		// показываем последние 3 ошибки для контекста
+		errCount := len(state.Errors)
+		showErrors := 3
+		if errCount < showErrors {
+			showErrors = errCount
+		}
+
+		errMsg := fmt.Sprintf("cannot complete task: %d unresolved errors\n", errCount)
+		errMsg += "Recent errors:\n"
+		for i := errCount - showErrors; i < errCount; i++ {
+			errMsg += fmt.Sprintf("  %d. %s\n", i+1, state.Errors[i])
+		}
+		errMsg += "\nHint: Fix the errors or use 'reset_task_state' to clear error history if they are resolved"
+
+		return "", fmt.Errorf(errMsg)
+	}
+
+	// Record completion in task state
+	state.SetContext("task_completed", "true")
+
+	return fmt.Sprintf("🎉 Task completed:\n\n%s\n\n✅ All requirements have been fulfilled.\nNo further action is required.", result), nil
 }

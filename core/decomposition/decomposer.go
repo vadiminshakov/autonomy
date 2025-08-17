@@ -12,12 +12,10 @@ import (
 )
 
 type TaskStep struct {
-	ID           string                 `json:"id"`
-	Description  string                 `json:"description"`
-	Tool         string                 `json:"tool"`
-	Args         map[string]interface{} `json:"args"`
-	Reason       string                 `json:"reason"`
-	Dependencies []string               `json:"dependencies,omitempty"`
+	ID           string   `json:"id"`
+	Description  string   `json:"description"`
+	Reason       string   `json:"reason"`
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 type DecompositionResult struct {
@@ -61,50 +59,49 @@ func (td *TaskDecomposer) DecomposeTask(
 	return result, nil
 }
 
-func (td *TaskDecomposer) buildToolsList(tools []entity.ToolDefinition) string {
-	var toolsList strings.Builder
-
-	for _, tool := range tools {
-		toolsList.WriteString(fmt.Sprintf("- %s: %s, args: %v\n", tool.Name, tool.Description, tool.InputSchema))
-	}
-
-	return toolsList.String()
-}
-
 func (td *TaskDecomposer) buildDecompositionPrompt(taskDescription string, availableTools []entity.ToolDefinition) entity.PromptData {
-	toolsList := td.buildToolsList(availableTools)
-	systemPrompt := fmt.Sprintf(`You are a task decomposition expert. Your job is to break down complex programming tasks into specific, executable steps.
+	systemPrompt := `You are a task decomposition expert. Your job is to break down complex programming tasks into logical, sequential steps.
 
-Available tools that can be used in steps:
-%s
+CRITICAL DECOMPOSITION RULES:
+1. Keep decomposition MINIMAL - aim for 3-6 steps maximum for most tasks
+2. Each step should describe WHAT needs to be done, not HOW (no specific tools mentioned)
+3. Steps should be logically necessary, not just "nice to have"
+4. Avoid redundant verification/checking steps unless critical
+5. Group related operations when possible
+6. Focus on the core deliverable, not every possible side task
+7. Each step should be substantial enough to require AI decision-making
 
-DECOMPOSITION RULES:
-1. Break the task into logical, sequential steps
-2. Each step should use exactly ONE tool
-3. Steps should be atomic and focused
-4. Include dependencies between steps when needed
-5. Provide clear reasoning for each step
-6. Start with analysis/understanding steps before making changes
-7. End with validation/testing steps when appropriate
-8. Avoid over-decomposition - keep steps meaningful and substantial
+TASK COMPLEXITY GUIDELINES:
+- Simple tasks (create single file, read something): 2-3 steps maximum
+- Medium tasks (implement feature): 3-5 steps maximum  
+- Complex tasks (refactor system): 4-7 steps maximum
+
+GOOD STEP EXAMPLES:
+- "Analyze the existing code structure to understand current implementation"
+- "Implement the new authentication middleware with proper error handling"
+- "Update all existing route handlers to use the new middleware"
+- "Create comprehensive tests for the authentication flow"
+
+BAD STEP EXAMPLES:
+- "Use read_file to check main.go" (too specific about tools)
+- "Verify directory exists" (unnecessary when other tools handle this)
+- "Run tests" (unless testing is the main goal)
 
 OUTPUT FORMAT:
 Provide your response as a JSON object with this structure:
 {
-  "reasoning": "Explanation of your decomposition approach",
+  "reasoning": "Explanation of your decomposition approach and why these steps are necessary",
   "steps": [
     {
       "id": "step_1",
-      "description": "Clear description of what this step does",
-      "tool": "tool_name",
-      "args": {"param": "value"},
-      "reason": "Why this step is needed",
-      "dependencies": ["step_id"] // optional, only if depends on other steps
+      "description": "Clear description of what needs to be accomplished in this step",
+      "reason": "Why this step is necessary for the overall task",
+      "dependencies": ["step_id"] // optional, only if this step depends on completion of other steps
     }
   ]
 }
 
-IMPORTANT: Your response must be valid JSON only, no additional text.`, toolsList)
+IMPORTANT: Your response must be valid JSON only, no additional text.`
 
 	userMessage := fmt.Sprintf("Break down this task into executable steps: %s", taskDescription)
 
@@ -154,12 +151,6 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 		if step.Description == "" {
 			return nil, fmt.Errorf("step %s missing description", step.ID)
 		}
-		if step.Tool == "" {
-			return nil, fmt.Errorf("step %s missing tool", step.ID)
-		}
-		if step.Args == nil {
-			step.Args = make(map[string]interface{})
-		}
 	}
 
 	return &DecompositionResult{
@@ -167,25 +158,6 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 		Steps:        rawResult.Steps,
 		Reasoning:    rawResult.Reasoning,
 	}, nil
-}
-
-func (dr *DecompositionResult) ConvertToToolCalls() []entity.ToolCall {
-	toolCalls := make([]entity.ToolCall, len(dr.Steps))
-
-	for i, step := range dr.Steps {
-		argsJSON, _ := json.Marshal(step.Args)
-
-		toolCalls[i] = entity.ToolCall{
-			ID:   fmt.Sprintf("decomp_%d", i),
-			Type: "function",
-			Function: entity.FunctionCall{
-				Name:      step.Tool,
-				Arguments: string(argsJSON),
-			},
-		}
-	}
-
-	return toolCalls
 }
 
 func (dr *DecompositionResult) GetStepSummary() string {
@@ -201,7 +173,6 @@ func (dr *DecompositionResult) GetStepSummary() string {
 
 	for i, step := range dr.Steps {
 		summary.WriteString(fmt.Sprintf("  %d. %s\n", i+1, step.Description))
-		summary.WriteString(fmt.Sprintf("     Tool: %s\n", step.Tool))
 
 		if step.Reason != "" {
 			summary.WriteString(fmt.Sprintf("     Reason: %s\n", step.Reason))

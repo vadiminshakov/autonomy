@@ -100,9 +100,12 @@ func TestAttemptCompletionWithSummary(t *testing.T) {
 		},
 		{
 			name: "Empty completion with summary",
-			args: map[string]interface{}{},
+			args: map[string]interface{}{
+				"result": "Task completed successfully",
+			},
 			expected: []string{
 				"🎉 Task completed",
+				"Task completed successfully",
 			},
 		},
 	}

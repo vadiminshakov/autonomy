@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -75,6 +76,13 @@ func WriteFile(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("failed to rename temp file to %s: %v", pathVal, err)
 	}
 
+	// validate code if it's a Go file
+	if filepath.Ext(cleanPath) == ".go" {
+		if err := validateGoFile(cleanPath); err != nil {
+			return fmt.Sprintf("file %s written but has syntax errors: %v", pathVal, err), nil
+		}
+	}
+
 	state := getTaskState()
 	if _, err := os.Stat(cleanPath); err == nil {
 		state.RecordFileModified(cleanPath)
@@ -83,4 +91,23 @@ func WriteFile(args map[string]interface{}) (string, error) {
 	}
 
 	return fmt.Sprintf("file %s successfully written (%d bytes)", pathVal, len(contentVal)), nil
+}
+
+// validateGoFile проверяет синтаксис Go файла
+func validateGoFile(filePath string) error {
+	cmd := exec.Command("go", "build", "-o", "/dev/null", filePath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// извлекаем только важную часть ошибки
+		errorMsg := string(output)
+		if strings.Contains(errorMsg, "syntax error") {
+			lines := strings.Split(errorMsg, "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "syntax error") {
+					return fmt.Errorf("syntax error in Go code: %s", strings.TrimSpace(line))
+				}
+			}
+		}
+		return fmt.Errorf("go build failed: %s", strings.TrimSpace(errorMsg))
+	}
+	return nil
 }

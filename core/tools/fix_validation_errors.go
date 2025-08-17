@@ -83,7 +83,7 @@ func requestLLMToFixErrors(filePath, content string, errors []string) (string, e
 		"task":        "Fix validation errors in this file",
 	}
 
-	_, err := Execute("apply_diff", args)
+	_, err := Execute("lsp_edit", args)
 	if err != nil {
 		return "", fmt.Errorf("LLM fix request failed: %v", err)
 	}

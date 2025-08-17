@@ -25,7 +25,14 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 
 	fmt.Printf("running command: %s\n", cmdStr)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// для интерактивных команд используем сокращенный таймаут
+	timeout := 60 * time.Second
+	if isInteractiveCommand(cmdStr) {
+		timeout = 10 * time.Second
+		fmt.Printf("⚡ Using shorter timeout for interactive command\n")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
@@ -35,7 +42,7 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	state.RecordCommandExecuted(cmdStr)
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return string(out), fmt.Errorf("command exceeded 60s timeout. consider using 'interrupt_command' for long-running commands that need interruption analysis")
+		return string(out), fmt.Errorf("command exceeded %ds timeout. use 'interrupt_command' for long-running commands that need analysis", int(timeout.Seconds()))
 	}
 
 	if err != nil {
@@ -61,6 +68,25 @@ func isDangerousCommand(cmd string) bool {
 
 	for _, dangerous := range dangerousCommands {
 		if strings.Contains(cmd, dangerous) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isInteractiveCommand checks if a command is likely to be interactive or long-running
+func isInteractiveCommand(cmd string) bool {
+	interactivePatterns := []string{
+		"go run", "python", "node", "npm start", "java -jar",
+		"./", "serve", "server", "listen", "daemon", "watch",
+		"tail -f", "less", "more", "vi", "vim", "nano", "emacs",
+		"ssh", "telnet", "ftp", "sftp", "mysql", "psql", "redis-cli",
+	}
+
+	cmdLower := strings.ToLower(strings.TrimSpace(cmd))
+	for _, pattern := range interactivePatterns {
+		if strings.Contains(cmdLower, pattern) {
 			return true
 		}
 	}

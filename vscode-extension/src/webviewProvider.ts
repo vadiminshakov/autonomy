@@ -257,6 +257,13 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         filtered = filtered.replace(/\uFFFD/g, '');  // Remove � character
         filtered = filtered.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''); // Remove control characters
 
+        // убираем экранированные символы если они случайно попали
+        filtered = filtered.replace(/\\n/g, '\n');
+        filtered = filtered.replace(/\\t/g, '\t');
+        filtered = filtered.replace(/\\r/g, '\r');
+        filtered = filtered.replace(/\\\"/g, '"');
+        filtered = filtered.replace(/\\\'/g, "'");
+
         // Filter out thinking text and repetitive messages
         const lines = filtered.split('\n');
         const meaningfulLines = lines.filter(line => {

@@ -53,11 +53,8 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 	taskState.SetContext("decomposed_task", result)
 	taskState.SetContext("has_execution_plan", true)
 
-	toolCalls := result.ConvertToToolCalls()
-
 	planData := map[string]any{
 		"task_description": taskDesc,
-		"tool_calls":       toolCalls,
 		"decomposition":    result,
 	}
 

@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,9 +10,7 @@ import (
 	"github.com/vadiminshakov/autonomy/core/ai"
 	"github.com/vadiminshakov/autonomy/core/decomposition"
 	"github.com/vadiminshakov/autonomy/core/entity"
-	"github.com/vadiminshakov/autonomy/core/reflection"
 	"github.com/vadiminshakov/autonomy/core/tools"
-	"github.com/vadiminshakov/autonomy/core/types"
 	"github.com/vadiminshakov/autonomy/ui"
 )
 
@@ -53,11 +50,7 @@ type Task struct {
 	cancel      context.CancelFunc
 	noToolCount int
 
-	planner          *Planner
-	reflectionEngine *reflection.ReflectionEngine
-	originalTask     string
-
-	toolCallHistory map[string]int
+	originalTask string
 }
 
 // NewTask creates a new task with default configuration
@@ -68,21 +61,13 @@ func NewTask(client ai.AIClient) *Task {
 // NewTaskWithConfig creates a new task with custom configuration
 func NewTaskWithConfig(client ai.AIClient, config Config) *Task {
 	ctx, cancel := context.WithCancel(context.Background())
-	var reflectionEngine *reflection.ReflectionEngine
-	if config.EnableReflection {
-		reflectionEngine = reflection.NewReflectionEngine(client)
-	}
 
 	return &Task{
-		client:           client,
-		promptData:       NewPromptData(),
-		config:           config,
-		ctx:              ctx,
-		cancel:           cancel,
-		planner:          NewPlanner(),
-		reflectionEngine: reflectionEngine,
-
-		toolCallHistory: make(map[string]int),
+		client:     client,
+		promptData: NewPromptData(),
+		config:     config,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
@@ -113,82 +98,43 @@ func (t *Task) AddUserMessage(message string) {
 func (t *Task) ProcessTask() error {
 	defer t.Close()
 
+	// основной цикл выполнения задач
 	for iter := 0; iter < t.config.MaxIterations; iter++ {
 		if err := t.checkCancellation(); err != nil {
 			return err
 		}
 
-		// Check if task was already completed
-		if taskState := tools.GetTaskState(); taskState != nil {
-			if ctx, ok := taskState.GetContext("task_completed"); ok && ctx == "true" {
-				fmt.Println("✅ Task already completed. Exiting.")
-				return nil
-			}
-		}
-
 		response, err := t.callAi()
 		if err != nil {
-			return t.handleAIError(err)
+			return fmt.Errorf("AI call failed: %v", err)
 		}
 
 		if response.Content != "" {
-			fmt.Printf("%s\n", response.Content)
-		}
-
-		if len(response.ToolCalls) > 0 {
-			for _, call := range response.ToolCalls {
-				argsStr := ""
-				if len(call.Args) > 0 {
-					args := make([]string, 0, len(call.Args))
-					for k, v := range call.Args {
-						if k != "_enhanced_metadata" {
-							args = append(args, fmt.Sprintf("%s: %v", k, v))
-						}
-					}
-					if len(args) > 0 {
-						argsStr = " (" + strings.Join(args, ", ") + ")"
-					}
-				}
-				fmt.Printf("Tool: %s%s\n", call.Name, argsStr)
-
-				if t.isToolCallLoop(call) {
-					fmt.Printf("Warning: Tool %s called too many times. This may indicate a loop.\n", call.Name)
-				}
-			}
+			fmt.Printf("%s\n", NormalizeOutput(response.Content))
 		}
 
 		if len(response.ToolCalls) == 0 {
 			t.addAssistantMessage(response.Content)
 			if shouldAbort := t.handleNoTools(); shouldAbort {
-				return errors.New("ai did not provide tool invocations after multiple attempts")
+				return fmt.Errorf("task execution timed out")
 			}
 			continue
 		}
 
 		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
-
-		var toolNames []string
-		for _, call := range response.ToolCalls {
-			toolNames = append(toolNames, call.Name)
-		}
-
 		t.resetNoToolCount()
 
-		done, err := t.executeTools(response.ToolCalls)
+		completed, err := t.executeTools(response.ToolCalls)
 		if err != nil {
-			continue
+			return fmt.Errorf("tool execution failed: %v", err)
 		}
 
-		if done {
+		if completed {
 			return nil
 		}
 	}
 
-	fmt.Println(ui.Warning(fmt.Sprintf(
-		"Reached limit of %d attempts. Type 'continue' to resume",
-		t.config.MaxIterations,
-	)))
-	return nil
+	return fmt.Errorf("task execution timed out after %d iterations", t.config.MaxIterations)
 }
 
 func (t *Task) callAi() (*entity.AIResponse, error) {
@@ -211,91 +157,99 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 }
 
 func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
-	// сначала проверяем, есть ли декомпозированная задача
-	if plan := t.getPlanFromDecompositionIfExists(); plan != nil {
-		return t.executePlan(plan)
+	// проверяем, есть ли декомпозированная задача
+	if hasDecomposedTask() {
+		return t.executeDecomposition()
 	}
 
-	// простая логика: если больше одного инструмента или есть зависимости - используем план
-	if len(calls) > 1 || t.hasComplexDependencies(calls) {
-		plan := t.planner.CreatePlan(calls)
-		return t.executePlan(plan)
-	}
-
-	// иначе выполняем последовательно
+	// иначе выполняем tool calls обычным способом
 	return t.executeSequential(calls)
 }
 
-func (t *Task) getPlanFromDecompositionIfExists() *types.ExecutionPlan {
-	if !hasDecomposedTask() {
-		return nil
-	}
-
+// executeDecomposition выполняет декомпозированную задачу напрямую
+func (t *Task) executeDecomposition() (bool, error) {
 	decomposedTask, err := getDecomposedTask()
 	if err != nil {
-		return nil
+		return false, fmt.Errorf("failed to get decomposed task: %v", err)
 	}
 
-	toolCalls := decomposedTask.ConvertToToolCalls()
-	plan := t.planner.CreatePlan(toolCalls)
 	clearDecomposedTask()
 
 	fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
-	return plan
-}
+	fmt.Printf("Executing decomposed task with %d steps...\n", len(decomposedTask.Steps))
 
-func (t *Task) shouldUsePlanning(calls []entity.ToolCall) bool {
-	if len(calls) >= 2 {
-		return true
-	}
-
-	hasAnalysis := false
-	hasModification := false
-
-	for _, call := range calls {
-		switch call.Name {
-		case "read_file", "analyze_code_go", "search_dir", "search_index":
-			hasAnalysis = true
-		case "write_file", "apply_diff":
-			hasModification = true
-		}
-	}
-
-	return hasAnalysis && hasModification
-}
-
-func (t *Task) executePlan(plan *types.ExecutionPlan) (bool, error) {
-	fmt.Printf("Executing plan with %d steps...\n", len(plan.Steps))
-
-	// используем параллельный исполнитель
-	executor := NewParallelExecutor(4, 5*time.Minute)
-
-	// выполняем план
-	err := executor.ExecutePlan(t.ctx, plan)
-	if err != nil {
-		fmt.Printf("Plan execution error: %v\n", err)
-		return false, err
-	}
-
-	// добавляем результаты в историю
-	t.addPlanResultsToHistory(plan)
-
-	// проверяем завершение
-	return t.checkCompletion(plan), nil
-}
-
-func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
-	fmt.Printf("Executing %d tools sequentially...\n", len(calls))
-
-	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(t.ctx, 10*time.Minute)
 	defer cancel()
 
-	for i, call := range calls {
+	for i, step := range decomposedTask.Steps {
 		if err := t.checkContext(ctx); err != nil {
 			return false, err
 		}
 
-		fmt.Printf("Tool %d/%d: %s\n", i+1, len(calls), call.Name)
+		fmt.Printf("Step %d/%d: %s\n", i+1, len(decomposedTask.Steps), step.Description)
+
+		// выполняем логический шаг
+		result, err := t.executeLogicalTaskStep(ctx, step)
+		if err != nil {
+			fmt.Printf("Step execution failed: %v\n", err)
+			return false, err
+		}
+
+		fmt.Printf("Step %d completed: %s\n", i+1, result)
+	}
+
+	return false, nil
+}
+
+// executeLogicalTaskStep выполняет логический шаг задачи, отправляя описание модели
+func (t *Task) executeLogicalTaskStep(ctx context.Context, step decomposition.TaskStep) (string, error) {
+	// создаем сообщение с описанием шага
+	stepMessage := entity.Message{
+		Role:    "user",
+		Content: fmt.Sprintf("Execute this step: %s", step.Description),
+	}
+
+	// добавляем сообщение в историю
+	t.promptData.Messages = append(t.promptData.Messages, stepMessage)
+
+	// получаем ответ от модели используя существующий метод
+	response, err := t.client.GenerateCode(ctx, *t.promptData)
+	if err != nil {
+		return "", fmt.Errorf("failed to get AI response for logical step: %v", err)
+	}
+
+	// добавляем ответ модели в историю
+	t.promptData.Messages = append(t.promptData.Messages, entity.Message{
+		Role:    "assistant",
+		Content: response.Content,
+	})
+
+	// если модель вернула tool calls, выполняем их
+	if len(response.ToolCalls) > 0 {
+		completed, err := t.executeTools(response.ToolCalls)
+		if err != nil {
+			return "", err
+		}
+		if completed {
+			return "Step completed successfully", nil
+		}
+	}
+
+	return response.Content, nil
+}
+
+func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
+	if len(calls) > 1 {
+		fmt.Printf("executing %d tools sequentially...\n", len(calls))
+	}
+
+	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
+	defer cancel()
+
+	for _, call := range calls {
+		if err := t.checkContext(ctx); err != nil {
+			return false, err
+		}
 
 		// выполняем инструмент
 		result, err := t.exec(ctx, call)
@@ -310,66 +264,6 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 	}
 
 	return false, nil
-}
-
-// hasComplexDependencies проверяет, есть ли сложные зависимости между инструментами
-func (t *Task) hasComplexDependencies(calls []entity.ToolCall) bool {
-	// проверяем, есть ли операции чтения и записи одних и тех же файлов
-	fileOps := make(map[string][]string)
-
-	for _, call := range calls {
-		var args map[string]any
-		if call.Args != nil {
-			args = call.Args
-		}
-
-		// извлекаем путь к файлу
-		var path string
-		for _, key := range []string{"path", "file", "fileName", "file_path"} {
-			if p, ok := args[key].(string); ok {
-				path = p
-				break
-			}
-		}
-
-		if path != "" {
-			fileOps[path] = append(fileOps[path], call.Name)
-		}
-	}
-
-	// если есть несколько операций с одним файлом - нужен план
-	for _, ops := range fileOps {
-		if len(ops) > 1 {
-			return true
-		}
-	}
-
-	// проверяем наличие операций, требующих последовательности
-	hasAnalysis := false
-	hasModification := false
-
-	for _, call := range calls {
-		switch call.Name {
-		case "read_file", "analyze_code_go", "search_dir", "search_index":
-			hasAnalysis = true
-		case "write_file", "apply_diff":
-			hasModification = true
-		case "go_test", "go_vet":
-			// тесты всегда требуют зависимостей
-			return true
-		}
-	}
-
-	return hasAnalysis && hasModification
-}
-
-func (t *Task) checkCompletion(plan *types.ExecutionPlan) bool {
-	for _, step := range plan.Steps {
-		if step.ToolName == "attempt_completion" && step.Status == types.StepStatusCompleted {
-			return true
-		}
-	}
-	return false
 }
 
 func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
@@ -415,7 +309,6 @@ func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
 func (t *Task) getToolTimeout(toolName string) time.Duration {
 	longRunningTools := map[string]time.Duration{
 		"decompose_task":  9 * time.Minute,
-		"execute_command": 3 * time.Minute,
 		"go_test":         2 * time.Minute,
 		"search_index":    2 * time.Minute,
 		"analyze_code_go": 1 * time.Minute,
@@ -454,14 +347,23 @@ func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) 
 		if result != "" {
 			if call.Name == "attempt_completion" {
 				fmt.Println(ui.Info(result))
+			} else if isFileOperation(call.Name) {
+				// специальная обработка для файловых операций
+				displayResult := limitFileToolOutput(result)
+				normalizedResult := NormalizeOutput(displayResult)
+				fmt.Printf("```\n%s\n```\n", normalizedResult)
 			} else {
 				result = limitToolOutput(result)
-				fmt.Printf("Tool result: %s\n", result)
+				// нормализуем вывод для корректного отображения Unicode
+				normalizedResult := NormalizeOutput(result)
+				fmt.Printf("Tool result: %s\n", normalizedResult)
 			}
 		}
 	}
 
-	t.promptData.AddToolResponse(call.ID, result)
+	// ограничиваем результат для истории AI (не более 2000 символов)
+	historyResult := limitToolOutput(result)
+	t.promptData.AddToolResponse(call.ID, historyResult)
 }
 
 func limitToolOutput(result string) string {
@@ -479,6 +381,66 @@ func limitToolOutput(result string) string {
 	}
 
 	return result
+}
+
+// isFileOperation проверяет является ли инструмент файловой операцией
+func isFileOperation(toolName string) bool {
+	switch toolName {
+	case "read_file", "write_file", "lsp_edit":
+		return true
+	default:
+		return false
+	}
+}
+
+// limitFileToolOutput ограничивает вывод файловых операций до 13 строк и 1500 символов
+func limitFileToolOutput(result string) string {
+	maxLines := 13
+	maxChars := 1500
+
+	// сначала ограничиваем по символам
+	if len(result) > maxChars {
+		result = result[:maxChars] + "\n... [показаны первые 1500 символов]"
+	}
+
+	// затем по строкам
+	lines := strings.Split(result, "\n")
+	if len(lines) > maxLines {
+		truncated := strings.Join(lines[:maxLines], "\n")
+		return truncated + "\n... [показаны первые 13 строк]"
+	}
+
+	return result
+}
+
+// NormalizeOutput нормализует Unicode и убирает проблемные символы
+func NormalizeOutput(s string) string {
+	// заменяем типографские кавычки и апострофы на обычные
+	replacements := map[string]string{
+		"\u2018": "'",   // Left single quotation mark
+		"\u2019": "'",   // Right single quotation mark
+		"\u201C": "\"",  // Left double quotation mark
+		"\u201D": "\"",  // Right double quotation mark
+		"\u2013": "-",   // En dash
+		"\u2014": "-",   // Em dash
+		"\u2026": "...", // Ellipsis
+	}
+
+	result := s
+	for old, new := range replacements {
+		result = strings.ReplaceAll(result, old, new)
+	}
+
+	// убираем только действительно проблемные управляющие символы
+	var clean strings.Builder
+	for _, r := range result {
+		// разрешаем: переводы строк, табы, обычные печатные символы и Unicode символы
+		if r == '\n' || r == '\t' || r == '\r' || (r >= 32 && r != 127) || r > 127 {
+			clean.WriteRune(r)
+		}
+	}
+
+	return strings.TrimSpace(clean.String())
 }
 
 func (t *Task) checkCancellation() error {
@@ -565,7 +527,7 @@ func (t *Task) contextCompaction(messagesToTrim int) string {
 			}
 		}
 
-		if strings.Contains(content, "write_file") || strings.Contains(content, "apply_diff") {
+		if strings.Contains(content, "write_file") || strings.Contains(content, "lsp_edit") {
 			if idx := strings.Index(content, "path:"); idx != -1 {
 				pathPart := content[idx+5:]
 				if endIdx := strings.IndexAny(pathPart, " \n,}"); endIdx != -1 {
@@ -619,33 +581,6 @@ func (t *Task) resetNoToolCount() {
 	t.mu.Lock()
 	t.noToolCount = 0
 	t.mu.Unlock()
-}
-
-func (t *Task) isToolCallLoop(call entity.ToolCall) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	key := call.Name
-	if call.Args != nil {
-		argsStr := fmt.Sprintf("%v", call.Args)
-		key += "_" + argsStr
-	}
-
-	count := t.toolCallHistory[key]
-	t.toolCallHistory[key] = count + 1
-
-	// Special handling for attempt_completion - should only be called once
-	if call.Name == "attempt_completion" && count > 0 {
-		fmt.Printf("⚠️  Warning: attempt_completion already called %d times. Task should be completed.\n", count)
-		return true
-	}
-
-	// Warn about repeated identical tool calls
-	if count == 2 {
-		fmt.Printf("⚠️  Notice: Tool %s with same arguments called twice. Consider if this is necessary.\n", call.Name)
-	}
-
-	return count >= 3
 }
 
 func (t *Task) forceToolUsage() {
@@ -715,38 +650,6 @@ func formatFindFilesArgs(args map[string]any) string {
 	return strings.Join(parts, ", ")
 }
 
-func (t *Task) addPlanResultsToHistory(plan *types.ExecutionPlan) {
-	plan.Mu.RLock()
-	defer plan.Mu.RUnlock()
-
-	for _, step := range plan.Steps {
-		if step.Status == types.StepStatusCompleted || step.Status == types.StepStatusFailed {
-			call := entity.ToolCall{
-				ID:   fmt.Sprintf("plan_%s", step.ID),
-				Name: step.ToolName,
-				Args: step.Args,
-			}
-			t.handleToolResult(call, step.Result, step.Error)
-		}
-	}
-}
-
-func (t *Task) handleReflectionResult(reflection *reflection.ReflectionResult) {
-	if reflection.TaskCompleted {
-		fmt.Println(ui.Success("Reflection: Task completed successfully"))
-		fmt.Printf("%s\n", ui.Info("Reason: "+reflection.Reason))
-	} else {
-		fmt.Println(ui.Warning("Reflection: Task may not be fully completed"))
-		fmt.Printf("%s\n", ui.Info("Reason: "+reflection.Reason))
-
-		if reflection.ShouldRetry {
-			fmt.Println(ui.Info("Suggestion: Consider continuing or retrying the task"))
-			t.addUserMessage("The reflection system suggests the task is not fully complete. Reason: " +
-				reflection.Reason + ". Please review and continue if needed.")
-		}
-	}
-}
-
 func hasDecomposedTask() bool {
 	state := tools.GetTaskState()
 	hasTask, exists := state.GetContext("has_decomposed_task")
@@ -785,4 +688,14 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// extractTaskFromHistory извлекает задачу из истории сообщений
+func (t *Task) extractTaskFromHistory() string {
+	for _, msg := range t.promptData.Messages {
+		if msg.Role == "user" && len(msg.Content) > 10 {
+			return msg.Content
+		}
+	}
+	return "Complete the assigned task"
 }
