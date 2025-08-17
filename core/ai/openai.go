@@ -70,6 +70,77 @@ func NewOpenAICompatibleProvider(cfg config.Config, providerName string) *OpenAI
 	}
 }
 
+// extractJSONFromText извлекает первый JSON объект из текста
+func extractJSONFromText(s string) string {
+	start := strings.IndexByte(s, '{')
+	end := strings.LastIndexByte(s, '}')
+	if start >= 0 && end > start {
+		return s[start : end+1]
+	}
+	return ""
+}
+
+// parseTextToolCalls parses text format of tool calls
+// Format: "Tool call: tool_name (param1: value1, param2: value2)"
+func parseTextToolCalls(s string) ([]entity.ToolCall, bool) {
+	var calls []entity.ToolCall
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Tool call: ") {
+			// extract tool name and parameters
+			parts := strings.SplitN(line[11:], " (", 2)
+			if len(parts) > 0 {
+				toolName := strings.TrimSpace(parts[0])
+				args := make(map[string]interface{})
+
+				if len(parts) == 2 && strings.HasSuffix(parts[1], ")") {
+					// parse parameters
+					paramStr := parts[1][:len(parts[1])-1]
+					// for attempt_completion special case
+					if toolName == "attempt_completion" && strings.HasPrefix(paramStr, "result: ") {
+						args["result"] = strings.TrimPrefix(paramStr, "result: ")
+					} else {
+						// parse parameters
+						params := strings.Split(paramStr, ", ")
+						for _, param := range params {
+							kv := strings.SplitN(param, ": ", 2)
+							if len(kv) == 2 {
+								args[kv[0]] = kv[1]
+							}
+						}
+					}
+				}
+
+				calls = append(calls, entity.ToolCall{
+					Name: toolName,
+					Args: args,
+				})
+			}
+		}
+	}
+	return calls, len(calls) > 0
+}
+
+// parseJSONToolCalls парсит JSON формат вызова инструментов
+func parseJSONToolCalls(jsonStr string) ([]entity.ToolCall, string, bool) {
+	var parsed struct {
+		Content   string            `json:"content"`
+		ToolCalls []entity.ToolCall `json:"tool_calls"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &parsed); err == nil && len(parsed.ToolCalls) > 0 {
+		for i := range parsed.ToolCalls {
+			if parsed.ToolCalls[i].Name == "" {
+				parsed.ToolCalls[i].Name = parsed.ToolCalls[i].Function.Name
+			}
+			if parsed.ToolCalls[i].Arguments == "" && parsed.ToolCalls[i].Function.Arguments != "" {
+				parsed.ToolCalls[i].Arguments = parsed.ToolCalls[i].Function.Arguments
+			}
+		}
+		return parsed.ToolCalls, parsed.Content, true
+	}
+	return nil, "", false
+}
 
 func (h *OpenAICompatibleHandler) GenerateCode(ctx context.Context, promptData entity.PromptData) (*entity.AIResponse, error) {
 	systemPrompt := promptData.SystemPrompt
@@ -84,27 +155,19 @@ func (h *OpenAICompatibleHandler) GenerateCode(ctx context.Context, promptData e
 	for _, msg := range promptData.Messages {
 		switch msg.Role {
 		case "user":
-			promptText += fmt.Sprintf("User: %s\n", msg.Content)
+			promptText += fmt.Sprintf("%s\n", msg.Content)
 		case "assistant":
 			if len(msg.ToolCalls) > 0 {
-				promptText += fmt.Sprintf("Assistant: %s\n", msg.Content)
-				for _, call := range msg.ToolCalls {
-					argsStr := ""
-					if call.Args != nil && len(call.Args) > 0 {
-						args := make([]string, 0, len(call.Args))
-						for k, v := range call.Args {
-							if k != "_enhanced_metadata" {
-								args = append(args, fmt.Sprintf("%s: %v", k, v))
-							}
-						}
-						if len(args) > 0 {
-							argsStr = " (" + strings.Join(args, ", ") + ")"
-						}
-					}
-					promptText += fmt.Sprintf("Tool call: %s%s\n", call.Name, argsStr)
+				toolCallsJSON := map[string]interface{}{
+					"tool_calls": msg.ToolCalls,
 				}
+				if msg.Content != "" {
+					toolCallsJSON["content"] = msg.Content
+				}
+				jsonBytes, _ := json.Marshal(toolCallsJSON)
+				promptText += fmt.Sprintf("Assistant: %s\n", string(jsonBytes))
 			} else {
-				promptText += fmt.Sprintf("Assistant: %s\n", msg.Content)
+				promptText += fmt.Sprintf("%s\n", msg.Content)
 			}
 		case "tool":
 			promptText += fmt.Sprintf("Tool result: %s\n", msg.Content)
@@ -118,42 +181,29 @@ func (h *OpenAICompatibleHandler) GenerateCode(ctx context.Context, promptData e
 		return nil, err
 	}
 
-	var parsed struct {
-		Content   string            `json:"content"`
-		ToolCalls []entity.ToolCall `json:"tool_calls"`
-	}
-
-	extractJSON := func(s string) string {
-		start := strings.IndexByte(s, '{')
-		end := strings.LastIndexByte(s, '}')
-		if start >= 0 && end > start {
-			return s[start : end+1]
-		}
-		return ""
-	}
-
-	tryParse := func(s string) ([]entity.ToolCall, string, bool) {
-		if err := json.Unmarshal([]byte(s), &parsed); err == nil && len(parsed.ToolCalls) > 0 {
-			for i := range parsed.ToolCalls {
-				if parsed.ToolCalls[i].Name == "" {
-					parsed.ToolCalls[i].Name = parsed.ToolCalls[i].Function.Name
-				}
-				if parsed.ToolCalls[i].Arguments == "" && parsed.ToolCalls[i].Function.Arguments != "" {
-					parsed.ToolCalls[i].Arguments = parsed.ToolCalls[i].Function.Arguments
-				}
-			}
-			return parsed.ToolCalls, parsed.Content, true
-		}
-		return nil, "", false
-	}
-
-	if calls, content, ok := tryParse(response); ok {
+	// try to parse as JSON
+	if calls, content, ok := parseJSONToolCalls(response); ok {
 		return &entity.AIResponse{Content: content, ToolCalls: calls}, nil
 	}
-	if jsonStr := extractJSON(response); jsonStr != "" {
-		if calls, content, ok := tryParse(jsonStr); ok {
+
+	// try to extract JSON from text
+	if jsonStr := extractJSONFromText(response); jsonStr != "" {
+		if calls, content, ok := parseJSONToolCalls(jsonStr); ok {
 			return &entity.AIResponse{Content: content, ToolCalls: calls}, nil
 		}
+	}
+
+	// try to parse text format
+	if calls, ok := parseTextToolCalls(response); ok {
+		// remove lines with tool calls from content for better readability
+		cleanContent := response
+		for _, line := range strings.Split(response, "\n") {
+			if strings.HasPrefix(line, "Tool call: ") {
+				cleanContent = strings.Replace(cleanContent, line+"\n", "", 1)
+				cleanContent = strings.Replace(cleanContent, line, "", 1)
+			}
+		}
+		return &entity.AIResponse{Content: strings.TrimSpace(cleanContent), ToolCalls: calls}, nil
 	}
 
 	return &entity.AIResponse{Content: response}, nil

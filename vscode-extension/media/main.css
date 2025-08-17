@@ -8,24 +8,24 @@
     --bg-tertiary: #21262d;
     --surface-primary: #30363d;
     --surface-secondary: #21262d;
-    
+
     /* Accent colors */
     --accent-primary: #58a6ff;
     --accent-secondary: #7c3aec;
     --accent-success: #3fb950;
     --accent-warning: #d29922;
     --accent-error: #f85149;
-    
+
     /* Text colors */
     --text-primary: #f0f6fc;
     --text-secondary: #8b949e;
     --text-muted: #656d76;
-    
+
     /* Borders */
     --border-default: #30363d;
     --border-muted: #21262d;
     --border-accent: var(--accent-primary);
-    
+
     /* Shadows */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.2);
@@ -459,7 +459,9 @@ body {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Thinking indicator */
@@ -474,8 +476,15 @@ body {
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
+
+    0%,
+    100% {
+        opacity: 0.7;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 .thinking-content {
@@ -495,16 +504,16 @@ body {
         padding: 12px;
         gap: 12px;
     }
-    
+
     .agent-controls {
         flex-direction: column;
         gap: 6px;
     }
-    
+
     .form-actions {
         flex-direction: column;
     }
-    
+
     .input-area {
         flex-direction: column;
         align-items: stretch;
@@ -522,6 +531,7 @@ body {
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -560,12 +570,29 @@ body {
     color: var(--text-primary);
 }
 
-.message-content h1 { font-size: 18px; }
-.message-content h2 { font-size: 16px; }
-.message-content h3 { font-size: 15px; }
-.message-content h4 { font-size: 14px; }
-.message-content h5 { font-size: 13px; }
-.message-content h6 { font-size: 12px; }
+.message-content h1 {
+    font-size: 18px;
+}
+
+.message-content h2 {
+    font-size: 16px;
+}
+
+.message-content h3 {
+    font-size: 15px;
+}
+
+.message-content h4 {
+    font-size: 14px;
+}
+
+.message-content h5 {
+    font-size: 13px;
+}
+
+.message-content h6 {
+    font-size: 12px;
+}
 
 .message-content p {
     margin: 8px 0;

@@ -13,8 +13,8 @@ func init() {
 	Register("check_tool_usage", checkToolUsage)
 }
 
-// taskState tracks the state of task execution
-type taskState struct {
+// TaskState tracks the state of task execution
+type TaskState struct {
 	mu               sync.RWMutex
 	StartTime        time.Time              `json:"start_time"`
 	CompletedTools   map[string]int         `json:"completed_tools"`
@@ -28,7 +28,7 @@ type taskState struct {
 }
 
 var (
-	globalTaskState *taskState
+	globalTaskState *TaskState
 	stateOnce       sync.Once
 )
 
@@ -69,15 +69,15 @@ func checkToolUsage(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Tool '%s' has been used %d times", toolName, count), nil
 }
 
-// GetTaskState returns the global task state instance
-func GetTaskState() *taskState {
+// GetTaskState returns the global task state instance (exported for external packages)
+func GetTaskState() *TaskState {
 	return getTaskState()
 }
 
 // getTaskState returns the global task state instance
-func getTaskState() *taskState {
+func getTaskState() *TaskState {
 	stateOnce.Do(func() {
-		globalTaskState = &taskState{
+		globalTaskState = &TaskState{
 			StartTime:        time.Now(),
 			CompletedTools:   make(map[string]int),
 			CreatedFiles:     []string{},
@@ -93,7 +93,7 @@ func getTaskState() *taskState {
 }
 
 // RecordToolUse records that a tool was used
-func (ts *taskState) RecordToolUse(toolName string, success bool, result string) {
+func (ts *TaskState) RecordToolUse(toolName string, success bool, result string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -106,7 +106,7 @@ func (ts *taskState) RecordToolUse(toolName string, success bool, result string)
 }
 
 // RecordFileCreated records that a file was created
-func (ts *taskState) RecordFileCreated(path string) {
+func (ts *TaskState) RecordFileCreated(path string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -120,7 +120,7 @@ func (ts *taskState) RecordFileCreated(path string) {
 }
 
 // RecordFileModified records that a file was modified
-func (ts *taskState) RecordFileModified(path string) {
+func (ts *TaskState) RecordFileModified(path string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -134,7 +134,7 @@ func (ts *taskState) RecordFileModified(path string) {
 }
 
 // RecordFileRead records that a file was read
-func (ts *taskState) RecordFileRead(path string) {
+func (ts *TaskState) RecordFileRead(path string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -148,7 +148,7 @@ func (ts *taskState) RecordFileRead(path string) {
 }
 
 // RecordCommandExecuted records that a command was executed
-func (ts *taskState) RecordCommandExecuted(command string) {
+func (ts *TaskState) RecordCommandExecuted(command string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -156,7 +156,7 @@ func (ts *taskState) RecordCommandExecuted(command string) {
 }
 
 // SetContext sets a context value
-func (ts *taskState) SetContext(key string, value interface{}) {
+func (ts *TaskState) SetContext(key string, value interface{}) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -164,7 +164,7 @@ func (ts *taskState) SetContext(key string, value interface{}) {
 }
 
 // GetContext gets a context value
-func (ts *taskState) GetContext(key string) (interface{}, bool) {
+func (ts *TaskState) GetContext(key string) (interface{}, bool) {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 
@@ -173,7 +173,7 @@ func (ts *taskState) GetContext(key string) (interface{}, bool) {
 }
 
 // Reset resets the task state
-func (ts *taskState) Reset() {
+func (ts *TaskState) Reset() {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 

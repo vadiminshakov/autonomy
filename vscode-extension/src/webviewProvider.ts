@@ -14,7 +14,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private autoStartEnabled = false;
     private thinkingMessageId: string | null = null;
     private messagesFilePath: string;
-    private isProcessingMessage = false; // Защита от множественных вызовов
+    private isProcessingMessage = false;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -265,9 +265,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             // Filter out any line containing "thinking"
             if (trimmed.includes('thinking')) return false;
 
-            // Keep AI responses (they start with "AI:")
-            if (line.trim().startsWith('AI:')) return true;
-
             // Keep tool results
             if (line.trim().startsWith('Tool result:') || line.trim().startsWith('📋 Result:')) return true;
 
@@ -466,8 +463,8 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     this.clearMessagesFile(); // Clear messages when restarting
                 }
 
-                // Trigger restart via command - this will use the updated config
-                await vscode.commands.executeCommand('autonomy.start', true);
+                // Перезапускаем агент с новой конфигурацией
+                await this.startFreshAgent();
 
                 this.sendMessage('system', 'Autonomy agent restarted successfully with new configuration!');
             } catch (restartError) {
@@ -534,6 +531,8 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private handleNewTask() {
         this.handleClearHistory();
         this.sendMessage('system', 'Starting new task. Previous conversation cleared.');
+        // Обновляем состояние UI после очистки
+        this.updateWebviewState();
     }
 
     private addToHistory(type: 'user' | 'agent' | 'system', content: string) {

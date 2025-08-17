@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,8 +100,20 @@ func (pe *ParallelExecutor) executeStepsParallel(ctx context.Context, plan *type
 		if result.Error != nil {
 			toolErrors = append(toolErrors, fmt.Errorf("step %s failed: %v", result.StepID, result.Error))
 			pe.planner.SetStepResult(plan, result.StepID, result.Result, result.Error)
+
+			// provide helpful error context for common issues
+			if strings.Contains(result.Error.Error(), "no such file") {
+				fmt.Printf("%s Hint: File not found. Use 'find_files' or 'get_project_structure' to verify file location\n", ui.Warning(""))
+			} else if strings.Contains(result.Error.Error(), "parameter") && strings.Contains(result.Error.Error(), "required") {
+				fmt.Printf("%s Hint: Missing required parameter. Check tool description for required arguments\n", ui.Warning(""))
+			}
 		} else {
 			pe.planner.SetStepResult(plan, result.StepID, result.Result, nil)
+
+			// check for empty results that might indicate a problem
+			if result.Result == "" && !isSilentTool(result.ToolName) {
+				fmt.Printf("%s Tool %s returned empty result - verify if this was expected\n", ui.Warning(""), result.ToolName)
+			}
 
 			if isSilentTool(result.ToolName) {
 				step := pe.findStepInPlan(plan, result.StepID)

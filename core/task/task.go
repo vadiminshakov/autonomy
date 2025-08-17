@@ -118,13 +118,21 @@ func (t *Task) ProcessTask() error {
 			return err
 		}
 
+		// Check if task was already completed
+		if taskState := tools.GetTaskState(); taskState != nil {
+			if ctx, ok := taskState.GetContext("task_completed"); ok && ctx == "true" {
+				fmt.Println("✅ Task already completed. Exiting.")
+				return nil
+			}
+		}
+
 		response, err := t.callAi()
 		if err != nil {
 			return t.handleAIError(err)
 		}
 
 		if response.Content != "" {
-			fmt.Printf("AI: %s\n", response.Content)
+			fmt.Printf("%s\n", response.Content)
 		}
 
 		if len(response.ToolCalls) > 0 {
@@ -625,6 +633,17 @@ func (t *Task) isToolCallLoop(call entity.ToolCall) bool {
 
 	count := t.toolCallHistory[key]
 	t.toolCallHistory[key] = count + 1
+
+	// Special handling for attempt_completion - should only be called once
+	if call.Name == "attempt_completion" && count > 0 {
+		fmt.Printf("⚠️  Warning: attempt_completion already called %d times. Task should be completed.\n", count)
+		return true
+	}
+
+	// Warn about repeated identical tool calls
+	if count == 2 {
+		fmt.Printf("⚠️  Notice: Tool %s with same arguments called twice. Consider if this is necessary.\n", call.Name)
+	}
 
 	return count >= 3
 }

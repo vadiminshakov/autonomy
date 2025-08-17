@@ -41,6 +41,13 @@ func WriteFile(args map[string]interface{}) (string, error) {
 	// clean path to prevent directory traversal
 	cleanPath := filepath.Clean(pathVal)
 
+	// check if file exists with the same content
+	if existingContent, err := os.ReadFile(cleanPath); err == nil {
+		if string(existingContent) == contentVal {
+			return fmt.Sprintf("file %s already exists with identical content (%d bytes). no changes made", pathVal, len(contentVal)), nil
+		}
+	}
+
 	// create parent directory if it does not exist
 	dir := filepath.Dir(cleanPath)
 	if dir != "." && dir != "" {

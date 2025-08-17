@@ -16,16 +16,16 @@ func init() {
 func ExecuteCommand(args map[string]interface{}) (string, error) {
 	cmdStr, ok := args["command"].(string)
 	if !ok || strings.TrimSpace(cmdStr) == "" {
-		return "", fmt.Errorf("parameter 'command' must be a non-empty string")
+		return "", fmt.Errorf("parameter 'command' must be a non-empty string. example: {\"command\": \"go run main.go\"}")
 	}
 
 	if isDangerousCommand(cmdStr) {
-		return "", fmt.Errorf("execution of command '%s' is blocked for security reasons", cmdStr)
+		return "", fmt.Errorf("execution of command '%s' is blocked for security reasons. use safe alternatives or specify the full path", cmdStr)
 	}
 
 	fmt.Printf("running command: %s\n", cmdStr)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
@@ -35,11 +35,15 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	state.RecordCommandExecuted(cmdStr)
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return string(out), fmt.Errorf("command exceeded timeout of 30 seconds")
+		return string(out), fmt.Errorf("command exceeded 60s timeout. consider using 'interrupt_command' for long-running commands that need interruption analysis")
 	}
 
 	if err != nil {
-		return string(out), fmt.Errorf("error executing command: %v", err)
+		// provide more context about the error
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return string(out), fmt.Errorf("command failed with exit code %d. output: %s", exitErr.ExitCode(), string(out))
+		}
+		return string(out), fmt.Errorf("error executing command: %v. output: %s", err, string(out))
 	}
 	return string(out), nil
 }
