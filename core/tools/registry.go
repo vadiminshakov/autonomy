@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type ToolFunc func(args map[string]interface{}) (string, error)
+type ToolFunc func(args map[string]any) (string, error)
 
 var registry = make(map[string]ToolFunc)
 
@@ -18,7 +18,7 @@ func Register(name string, fn ToolFunc) {
 	registry[name] = fn
 }
 
-func Execute(name string, args map[string]interface{}) (string, error) {
+func Execute(name string, args map[string]any) (string, error) {
 	fn, ok := registry[name]
 	if !ok {
 		// suggest similar tool names if available
@@ -29,7 +29,7 @@ func Execute(name string, args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("tool %s not found. use 'get_task_state' to see available tools", name)
 	}
 
-	// логируем входные параметры для отладки (кроме больших значений)
+	// log input parameters for debugging (except large values)
 	if debugMode := getDebugMode(); debugMode {
 		logToolCall(name, args)
 	}
@@ -52,7 +52,7 @@ func Execute(name string, args map[string]interface{}) (string, error) {
 }
 
 // validateToolArgs performs basic validation of tool arguments
-func validateToolArgs(toolName string, args map[string]interface{}) error {
+func validateToolArgs(toolName string, args map[string]any) error {
 	// Basic validation for common tools
 	switch toolName {
 	case "read_file", "write_file", "lsp_edit", "delete_file", "copy_file", "move_file":
@@ -107,16 +107,16 @@ func contains(s, substr string) bool {
 				(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr))
 }
 
-// getDebugMode проверяет включен ли режим отладки
+// getDebugMode checks if debug mode is enabled
 func getDebugMode() bool {
-	// можно включить через переменную окружения AUTONOMY_DEBUG=true
+	// can be enabled via environment variable AUTONOMY_DEBUG=true
 	return os.Getenv("AUTONOMY_DEBUG") == "true"
 }
 
-// logToolCall логирует вызов инструмента с параметрами
-func logToolCall(name string, args map[string]interface{}) {
-	// ограничиваем размер логируемых значений
-	logArgs := make(map[string]interface{})
+// logToolCall logs tool call with parameters
+func logToolCall(_ string, args map[string]any) {
+	// limit size of logged values
+	logArgs := make(map[string]any)
 	for k, v := range args {
 		if str, ok := v.(string); ok && len(str) > 200 {
 			logArgs[k] = str[:200] + "... (truncated)"
@@ -125,8 +125,6 @@ func logToolCall(name string, args map[string]interface{}) {
 		}
 	}
 
-	// записываем в stderr чтобы не смешивать с выводом программы
-	fmt.Fprintf(os.Stderr, "[DEBUG] Tool call: %s with args: %+v\n", name, logArgs)
 }
 
 func List() []string {

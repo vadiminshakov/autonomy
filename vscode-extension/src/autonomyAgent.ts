@@ -10,7 +10,8 @@ export interface AutonomyConfig {
     baseURL?: string;
     maxIterations: number;
     enableReflection: boolean;
-
+    maxTokens?: number;
+    temperature?: number;
 }
 
 export class AutonomyAgent {
@@ -70,31 +71,50 @@ export class AutonomyAgent {
             });
 
             console.log(`autonomyAgent: Process spawned, PID: ${this.process.pid}`);
-            this.setupProcessHandlers();
             this.isRunningFlag = true;
             console.log(`autonomyAgent: isRunningFlag set to true`);
 
-            // ждем сигнала готовности от процесса
+            // ждем сигнала готовности от процесса ПЕРЕД установкой основных обработчиков
             const readyPromise = new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new Error('Timeout waiting for agent ready signal'));
                 }, 10000);
 
-                const onData = (data: Buffer) => {
+                const onStdout = (data: Buffer) => {
                     const output = data.toString();
+                    console.log(`autonomyAgent: Received stdout while waiting for ready signal: ${output.trim()}`);
                     if (output.includes('Autonomy agent is ready')) {
                         clearTimeout(timeout);
-                        this.process?.stdout?.removeListener('data', onData);
+                        this.process?.stdout?.removeListener('data', onStdout);
+                        this.process?.stderr?.removeListener('data', onStderr);
+                        console.log(`autonomyAgent: Ready signal received`);
                         resolve();
                     }
                 };
 
-                this.process?.stdout?.on('data', onData);
+                const onStderr = (data: Buffer) => {
+                    const error = data.toString();
+                    console.error(`autonomyAgent: Received stderr while waiting for ready signal: ${error.trim()}`);
+                    // Если это критическая ошибка, завершаем ожидание
+                    if (error.toLowerCase().includes('fatal') || error.toLowerCase().includes('panic')) {
+                        clearTimeout(timeout);
+                        this.process?.stdout?.removeListener('data', onStdout);
+                        this.process?.stderr?.removeListener('data', onStderr);
+                        reject(new Error(`Agent startup failed: ${error.trim()}`));
+                    }
+                };
+
+                this.process?.stdout?.on('data', onStdout);
+                this.process?.stderr?.on('data', onStderr);
             });
 
             try {
                 await readyPromise;
                 console.log(`autonomyAgent: Agent ready`);
+                
+                // Теперь устанавливаем основные обработчики после получения сигнала готовности
+                this.setupProcessHandlers();
+                console.log(`autonomyAgent: Process handlers setup complete`);
             } catch (error) {
                 console.error(`autonomyAgent: Failed to start agent:`, error);
                 throw error;

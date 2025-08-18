@@ -4,7 +4,7 @@ const vscode = acquireVsCodeApi();
 
 let clearHistoryBtn, newTaskBtn, sendButton;
 let messageInput, messagesContainer;
-let configForm, providerSelect, apiKeyInput, modelInput, modelSelect, toggleModelInputBtn, executablePathInput, baseUrlInput;
+let configForm, providerSelect, apiKeyInput, modelInput, modelSelect, toggleModelInputBtn, executablePathInput, baseUrlInput, maxTokensInput, temperatureInput;
 let saveConfigBtn, loadConfigBtn;
 
 
@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initializeElements() {
+    console.log('webview: Initializing elements...');
 
     clearHistoryBtn = document.getElementById('clear-history');
     newTaskBtn = document.getElementById('new-task');
@@ -43,8 +44,17 @@ function initializeElements() {
     toggleModelInputBtn = document.getElementById('toggle-model-input');
     executablePathInput = document.getElementById('executable-path');
     baseUrlInput = document.getElementById('base-url');
+    maxTokensInput = document.getElementById('max-tokens');
+    temperatureInput = document.getElementById('temperature');
     saveConfigBtn = document.getElementById('save-config');
     loadConfigBtn = document.getElementById('load-config');
+
+    console.log('webview: Elements found:', {
+        maxTokensInput: !!maxTokensInput,
+        temperatureInput: !!temperatureInput,
+        saveConfigBtn: !!saveConfigBtn,
+        sendButton: !!sendButton
+    });
 
     // по умолчанию элементы ввода отключены до получения информации о состоянии агента
     if (sendButton && messageInput) {
@@ -98,10 +108,12 @@ function setupEventListeners() {
     });
 
     // Add change listeners to all config inputs
-    apiKeyInput.addEventListener('input', checkConfigChanges);
-    modelInput.addEventListener('input', checkConfigChanges);
-    executablePathInput.addEventListener('input', checkConfigChanges);
-    baseUrlInput.addEventListener('input', checkConfigChanges);
+    if (apiKeyInput) apiKeyInput.addEventListener('input', checkConfigChanges);
+    if (modelInput) modelInput.addEventListener('input', checkConfigChanges);
+    if (executablePathInput) executablePathInput.addEventListener('input', checkConfigChanges);
+    if (baseUrlInput) baseUrlInput.addEventListener('input', checkConfigChanges);
+    if (maxTokensInput) maxTokensInput.addEventListener('input', checkConfigChanges);
+    if (temperatureInput) temperatureInput.addEventListener('input', checkConfigChanges);
 
     toggleModelInputBtn.addEventListener('click', toggleModelInput);
 }
@@ -292,11 +304,13 @@ function saveConfig() {
     }, 150);
 
     const config = {
-        provider: providerSelect.value,
-        apiKey: apiKeyInput.value,
-        model: modelInput.value,
-        executablePath: executablePathInput.value,
-        baseURL: baseUrlInput.value
+        provider: providerSelect ? providerSelect.value : '',
+        apiKey: apiKeyInput ? apiKeyInput.value : '',
+        model: modelInput ? modelInput.value : '',
+        executablePath: executablePathInput ? executablePathInput.value : '',
+        baseURL: baseUrlInput ? baseUrlInput.value : '',
+        maxTokens: maxTokensInput ? maxTokensInput.value : '',
+        temperature: temperatureInput ? temperatureInput.value : ''
     };
 
     vscode.postMessage({
@@ -313,11 +327,13 @@ function loadConfig() {
 }
 
 function populateConfigForm(config) {
-    providerSelect.value = config.provider || 'openai';
-    apiKeyInput.value = config.apiKey || '';
-    modelInput.value = config.model || '';
-    executablePathInput.value = config.executablePath || 'autonomy';
-    baseUrlInput.value = config.baseURL || '';
+    if (providerSelect) providerSelect.value = config.provider || 'openai';
+    if (apiKeyInput) apiKeyInput.value = config.apiKey || '';
+    if (modelInput) modelInput.value = config.model || '';
+    if (executablePathInput) executablePathInput.value = config.executablePath || 'autonomy';
+    if (baseUrlInput) baseUrlInput.value = config.baseURL || '';
+    if (maxTokensInput) maxTokensInput.value = config.maxTokens || '';
+    if (temperatureInput) temperatureInput.value = config.temperature || '';
 
     // Store original config for change detection
     originalConfig = {
@@ -325,7 +341,9 @@ function populateConfigForm(config) {
         apiKey: config.apiKey || '',
         model: config.model || '',
         executablePath: config.executablePath || 'autonomy',
-        baseURL: config.baseURL || ''
+        baseURL: config.baseURL || '',
+        maxTokens: config.maxTokens || '',
+        temperature: config.temperature || ''
     };
 
     onProviderChange();
@@ -471,11 +489,13 @@ window.addEventListener('message', event => {
             updateSaveButtonState();
             // Update original config with current values
             originalConfig = {
-                provider: providerSelect.value,
-                apiKey: apiKeyInput.value,
-                model: modelInput.value,
-                executablePath: executablePathInput.value,
-                baseURL: baseUrlInput.value
+                provider: providerSelect ? providerSelect.value : '',
+                apiKey: apiKeyInput ? apiKeyInput.value : '',
+                model: modelInput ? modelInput.value : '',
+                executablePath: executablePathInput ? executablePathInput.value : '',
+                baseURL: baseUrlInput ? baseUrlInput.value : '',
+                maxTokens: maxTokensInput ? maxTokensInput.value : '',
+                temperature: temperatureInput ? temperatureInput.value : ''
             };
             break;
 
@@ -493,11 +513,13 @@ window.addEventListener('message', event => {
 // Check if config has changed
 function checkConfigChanges() {
     const currentConfig = {
-        provider: providerSelect.value,
-        apiKey: apiKeyInput.value,
-        model: modelInput.value,
-        executablePath: executablePathInput.value,
-        baseURL: baseUrlInput.value
+        provider: providerSelect ? providerSelect.value : '',
+        apiKey: apiKeyInput ? apiKeyInput.value : '',
+        model: modelInput ? modelInput.value : '',
+        executablePath: executablePathInput ? executablePathInput.value : '',
+        baseURL: baseUrlInput ? baseUrlInput.value : '',
+        maxTokens: maxTokensInput ? maxTokensInput.value : '',
+        temperature: temperatureInput ? temperatureInput.value : ''
     };
 
     configChanged = JSON.stringify(currentConfig) !== JSON.stringify(originalConfig);

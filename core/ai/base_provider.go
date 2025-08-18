@@ -43,9 +43,9 @@ func (b *BaseProvider) GetCapabilities() ProviderCapabilities {
 func (b *BaseProvider) GetModel() ModelInfo {
 	return ModelInfo{
 		ID:                   "unknown",
-		MaxTokens:            4096,
+		MaxTokens:            16384,
 		Temperature:          0.0,
-		ContextWindow:        4096,
+		ContextWindow:        16384,
 		SupportsImages:       b.capabilities.Images,
 		SupportsTools:        b.capabilities.Tools,
 		SupportsSystemPrompt: b.capabilities.SystemPrompts,

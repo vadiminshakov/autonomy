@@ -66,14 +66,19 @@ func RunTerminal(client ai.AIClient) error {
 }
 
 func RunHeadless(client ai.AIClient) error {
-	scanner := bufio.NewScanner(os.Stdin)
-
-	fmt.Fprintf(os.Stdout, "Autonomy agent is ready\n")
-	os.Stdout.Sync()
-
-	for scanner.Scan() {
-		input := strings.TrimSpace(scanner.Text())
-
+	// Use a channel to handle stdin reading non-blocking
+	inputChan := make(chan string)
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		
+		for scanner.Scan() {
+			input := strings.TrimSpace(scanner.Text())
+			inputChan <- input
+		}
+		close(inputChan)
+	}()
+	
+	for input := range inputChan {
 		if input == "" {
 			continue
 		}
@@ -96,11 +101,8 @@ func RunHeadless(client ai.AIClient) error {
 		t.Close()
 
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "Task processing error: %v\n", err)
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading input: %v", err)
 	}
 
 	return nil

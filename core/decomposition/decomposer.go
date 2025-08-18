@@ -16,6 +16,8 @@ type TaskStep struct {
 	Description  string   `json:"description"`
 	Reason       string   `json:"reason"`
 	Dependencies []string `json:"dependencies,omitempty"`
+	Status       string   `json:"status,omitempty"` // pending, in_progress, completed, failed
+	MaxAttempts  int      `json:"max_attempts,omitempty"` // maximum number of attempts
 }
 
 type DecompositionResult struct {
@@ -60,7 +62,11 @@ func (td *TaskDecomposer) DecomposeTask(
 }
 
 func (td *TaskDecomposer) buildDecompositionPrompt(taskDescription string, availableTools []entity.ToolDefinition) entity.PromptData {
-	systemPrompt := `You are a task decomposition expert. Your job is to break down complex programming tasks into logical, sequential steps.
+	systemPrompt := `You are a task decomposition expert. Follow this structured approach for breaking down programming tasks:
+
+1. ANALYZE: Understand the task requirements, current state, and desired outcome
+2. PLAN: Design a minimal, logical sequence of steps
+3. STRUCTURE: Organize steps with clear dependencies and objectives
 
 CRITICAL DECOMPOSITION RULES:
 1. Keep decomposition MINIMAL - aim for 3-6 steps maximum for most tasks
@@ -71,10 +77,29 @@ CRITICAL DECOMPOSITION RULES:
 6. Focus on the core deliverable, not every possible side task
 7. Each step should be substantial enough to require AI decision-making
 
+CONTEXT AWARENESS:
+- You have access to full file contents (not truncated)
+- Project structure and dependencies are available
+- Previous task context and history are preserved
+- Language server information provides semantic understanding
+
 TASK COMPLEXITY GUIDELINES:
 - Simple tasks (create single file, read something): 2-3 steps maximum
 - Medium tasks (implement feature): 3-5 steps maximum  
 - Complex tasks (refactor system): 4-7 steps maximum
+
+STEP COMPLETION CRITERIA:
+Each step should have clear success criteria:
+- The specific objective is achieved
+- No errors remain unresolved
+- Implementation follows best practices
+- Tests pass (if applicable)
+
+TOOL USAGE EFFICIENCY:
+- Read files completely before making changes
+- Avoid redundant operations
+- Use appropriate tools for each task type
+- Combine related operations when possible
 
 GOOD STEP EXAMPLES:
 - "Analyze the existing code structure to understand current implementation"
@@ -150,6 +175,14 @@ func (td *TaskDecomposer) parseDecompositionResponse(content, originalTask strin
 
 		if step.Description == "" {
 			return nil, fmt.Errorf("step %s missing description", step.ID)
+		}
+
+		// initialize status and attempts
+		if step.Status == "" {
+			step.Status = "pending"
+		}
+		if step.MaxAttempts == 0 {
+			step.MaxAttempts = 3 // default 3 attempts
 		}
 	}
 

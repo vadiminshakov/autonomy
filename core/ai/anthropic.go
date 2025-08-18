@@ -613,7 +613,7 @@ func (h *AnthropicHandler) getMaxTokens() int {
 	if h.config.MaxTokens > 0 {
 		return h.config.MaxTokens
 	}
-	return 4096
+	return 16384
 }
 
 // CountTokens provides a rough token estimate

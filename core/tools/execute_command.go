@@ -25,7 +25,7 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 
 	fmt.Printf("running command: %s\n", cmdStr)
 
-	// для интерактивных команд используем сокращенный таймаут
+	// for interactive commands use shortened timeout
 	timeout := 60 * time.Second
 	if isInteractiveCommand(cmdStr) {
 		timeout = 10 * time.Second

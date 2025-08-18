@@ -93,11 +93,11 @@ func WriteFile(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("file %s successfully written (%d bytes)", pathVal, len(contentVal)), nil
 }
 
-// validateGoFile проверяет синтаксис Go файла
+// validateGoFile validates Go file syntax
 func validateGoFile(filePath string) error {
 	cmd := exec.Command("go", "build", "-o", "/dev/null", filePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		// извлекаем только важную часть ошибки
+		// extract only the important part of the error
 		errorMsg := string(output)
 		if strings.Contains(errorMsg, "syntax error") {
 			lines := strings.Split(errorMsg, "\n")

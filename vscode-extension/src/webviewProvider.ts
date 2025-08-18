@@ -457,6 +457,12 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             if (config.baseURL) {
                 currentConfig.base_url = config.baseURL;
             }
+            if (config.maxTokens !== undefined && config.maxTokens !== null && config.maxTokens !== '' && !isNaN(parseInt(config.maxTokens, 10))) {
+                currentConfig.max_tokens = parseInt(config.maxTokens, 10);
+            }
+            if (config.temperature !== undefined && config.temperature !== null && config.temperature !== '' && !isNaN(parseFloat(config.temperature))) {
+                currentConfig.temperature = parseFloat(config.temperature);
+            }
 
             // Write to global config
             await this.configManager.writeGlobalConfig(currentConfig);
@@ -506,7 +512,9 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     apiKey: config.apiKey, // Send actual API key so UI can show it
                     hasApiKey: !!config.apiKey,
                     maxIterations: config.maxIterations,
-                    enableReflection: config.enableReflection
+                    enableReflection: config.enableReflection,
+                    maxTokens: config.maxTokens,
+                    temperature: config.temperature
                 }
             });
         } catch (error) {
@@ -521,7 +529,9 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     apiKey: '',
                     hasApiKey: false,
                     maxIterations: 100,
-                    enableReflection: true
+                    enableReflection: true,
+                    maxTokens: undefined,
+                    temperature: undefined
                 }
             });
         }
@@ -662,6 +672,18 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                         <div class="form-group">
                             <label for="base-url">Base URL (Optional):</label>
                             <input type="text" id="base-url" placeholder="https://api.openai.com/v1">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max-tokens">Max Tokens:</label>
+                            <input type="number" id="max-tokens" placeholder="16384" min="1" max="200000">
+                            <small>Maximum number of tokens to generate (leave empty for default: 16384)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="temperature">Temperature:</label>
+                            <input type="number" id="temperature" placeholder="0.0" min="0" max="2" step="0.1">
+                            <small>Controls randomness: 0.0 = deterministic, 1.0 = creative (leave empty for provider default)</small>
                         </div>
 
                         <div class="form-actions">

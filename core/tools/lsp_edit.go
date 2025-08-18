@@ -36,12 +36,12 @@ func lspEdit(args map[string]interface{}) (string, error) {
 
 	pathVal = strings.TrimSpace(pathVal)
 
-	// проверяем что файл существует
+	// check that the file exists
 	if _, err := os.Stat(pathVal); os.IsNotExist(err) {
 		return "", fmt.Errorf("file does not exist: %s", pathVal)
 	}
 
-	// читаем содержимое файла
+	// read file content
 	content, err := os.ReadFile(pathVal)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %v", err)
@@ -51,16 +51,16 @@ func lspEdit(args map[string]interface{}) (string, error) {
 
 	var edits []EditRequest
 
-	// пробуем получить edits как JSON строку или массив
+	// try to get edits as JSON string or array
 	if editsVal, ok := args["edits"]; ok {
 		switch v := editsVal.(type) {
 		case string:
-			// если передана JSON строка
+			// if JSON string is passed
 			if err := json.Unmarshal([]byte(v), &edits); err != nil {
 				return "", fmt.Errorf("invalid edits JSON: %v", err)
 			}
 		case []interface{}:
-			// если передан массив объектов
+			// if array of objects is passed
 			for _, editVal := range v {
 				if editMap, ok := editVal.(map[string]interface{}); ok {
 					edit, err := parseEditRequest(editMap)
@@ -76,7 +76,7 @@ func lspEdit(args map[string]interface{}) (string, error) {
 			return "", fmt.Errorf("edits must be a JSON string or array of objects")
 		}
 	} else {
-		// fallback: создаем один edit из старых параметров для совместимости
+		// fallback: create one edit from old parameters for compatibility
 		startLine := 1
 		endLine := len(lines)
 		newText := ""
@@ -116,10 +116,10 @@ func lspEdit(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("no edits provided")
 	}
 
-	// применяем редактирования в обратном порядке (сверху вниз) чтобы не сбивать номера строк
+	// apply edits in reverse order (top to bottom) to avoid messing up line numbers
 	fmt.Printf("%s Applying %d edit(s) to %s\n", ui.Tool("LSP_EDIT"), len(edits), ui.BrightWhite(pathVal))
 
-	// сортируем edits по номерам строк в обратном порядке
+	// sort edits by line numbers in reverse order
 	sortedEdits := make([]EditRequest, len(edits))
 	copy(sortedEdits, edits)
 
@@ -132,14 +132,14 @@ func lspEdit(args map[string]interface{}) (string, error) {
 		}
 	}
 
-	// создаем backup
+	// create backup
 	backupPath := pathVal + ".backup." + fmt.Sprintf("%d", time.Now().Unix())
 	if err := os.WriteFile(backupPath, content, 0644); err != nil {
 		return "", fmt.Errorf("failed to create backup: %v", err)
 	}
 	defer os.Remove(backupPath)
 
-	// применяем редактирования
+	// apply edits
 	modifiedLines := lines
 	totalChanges := 0
 
@@ -148,27 +148,27 @@ func lspEdit(args map[string]interface{}) (string, error) {
 			return "", fmt.Errorf("invalid edit #%d: %v", i+1, err)
 		}
 
-		// логируем изменение
+		// log the change
 		logEdit(edit, i+1, len(sortedEdits))
 
-		// применяем редактирование
+		// apply the edit
 		newLines, changes := applyEdit(modifiedLines, edit)
 		modifiedLines = newLines
 		totalChanges += changes
 	}
 
-	// записываем результат
+	// write the result
 	newContent := strings.Join(modifiedLines, "\n")
 	if err := os.WriteFile(pathVal, []byte(newContent), 0644); err != nil {
-		// восстанавливаем из backup при ошибке
+		// restore from backup on error
 		os.WriteFile(pathVal, content, 0644)
 		return "", fmt.Errorf("failed to write modified file: %v", err)
 	}
 
-	// валидируем синтаксис если это Go файл
+	// validate syntax if this is a Go file
 	if strings.HasSuffix(pathVal, ".go") {
 		if err := validateGoSyntax(pathVal); err != nil {
-			// восстанавливаем из backup при ошибке синтаксиса
+			// restore from backup on syntax error
 			os.WriteFile(pathVal, content, 0644)
 			return "", fmt.Errorf("syntax validation failed: %v", err)
 		}
@@ -182,7 +182,7 @@ func lspEdit(args map[string]interface{}) (string, error) {
 	return result, nil
 }
 
-// parseEditRequest парсит объект редактирования из map
+// parseEditRequest parses edit object from map
 func parseEditRequest(editMap map[string]interface{}) (EditRequest, error) {
 	var edit EditRequest
 
@@ -226,7 +226,7 @@ func parseEditRequest(editMap map[string]interface{}) (EditRequest, error) {
 
 	if nt, ok := editMap["new_text"].(string); ok {
 		edit.NewText = nt
-	} // new_text не обязательный (может быть пустым для удаления)
+	} // new_text is not required (can be empty for deletion)
 
 	if desc, ok := editMap["description"].(string); ok {
 		edit.Description = desc
@@ -235,7 +235,7 @@ func parseEditRequest(editMap map[string]interface{}) (EditRequest, error) {
 	return edit, nil
 }
 
-// validateEdit проверяет валидность операции редактирования
+// validateEdit checks validity of edit operation
 func validateEdit(edit EditRequest, totalLines int) error {
 	if edit.StartLine < 1 {
 		return fmt.Errorf("start_line must be >= 1, got %d", edit.StartLine)
@@ -252,7 +252,7 @@ func validateEdit(edit EditRequest, totalLines int) error {
 	return nil
 }
 
-// logEdit логирует операцию редактирования
+// logEdit logs edit operation
 func logEdit(edit EditRequest, editNum, totalEdits int) {
 	desc := edit.Description
 	if desc == "" {
@@ -280,12 +280,12 @@ func logEdit(edit EditRequest, editNum, totalEdits int) {
 		ui.Info("EDIT"), editNum, totalEdits, ui.BrightWhite(desc), deltaStr)
 }
 
-// applyEdit применяет одну операцию редактирования к массиву строк
+// applyEdit applies one edit operation to array of lines
 func applyEdit(lines []string, edit EditRequest) ([]string, int) {
 	startIdx := edit.StartLine - 1 // convert to 0-based index
 	endIdx := edit.EndLine - 1
 
-	// защищаемся от выхода за границы
+	// protect against going out of bounds
 	if startIdx < 0 {
 		startIdx = 0
 	}
@@ -296,38 +296,38 @@ func applyEdit(lines []string, edit EditRequest) ([]string, int) {
 		startIdx = len(lines)
 	}
 
-	// разделяем новый текст на строки
+	// split new text into lines
 	var newLines []string
 	if edit.NewText != "" {
 		newLines = strings.Split(edit.NewText, "\n")
 	}
 
-	// создаем новый массив строк
+	// create new array of lines
 	result := make([]string, 0, len(lines)+len(newLines))
 
-	// добавляем строки до редактируемой области
+	// add lines before edited area
 	result = append(result, lines[:startIdx]...)
 
-	// добавляем новые строки
+	// add new lines
 	result = append(result, newLines...)
 
-	// добавляем строки после редактируемой области
+	// add lines after edited area
 	if endIdx+1 < len(lines) {
 		result = append(result, lines[endIdx+1:]...)
 	}
 
-	// подсчитываем количество изменений
+	// count number of changes
 	changes := 0
 	if len(newLines) > 0 || endIdx >= startIdx {
-		changes = 1 // считаем каждый edit как одно изменение
+		changes = 1 // count each edit as one change
 	}
 
 	return result, changes
 }
 
-// validateGoSyntax проверяет синтаксис Go файла
+// validateGoSyntax checks Go file syntax
 func validateGoSyntax(filePath string) error {
-	// используем gofmt для проверки синтаксиса
+	// use gofmt to check syntax
 	cmd := exec.Command("gofmt", "-e", filePath)
 	cmd.Dir = filepath.Dir(filePath)
 

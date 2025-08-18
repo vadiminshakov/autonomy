@@ -28,7 +28,8 @@ export class ConfigurationManager {
             baseURL: globalConfig.base_url || baseUrlDefaults[provider as keyof typeof baseUrlDefaults],
             maxIterations: globalConfig.max_iterations || 100,
             enableReflection: globalConfig.enable_reflection !== undefined ? globalConfig.enable_reflection : true,
-
+            maxTokens: globalConfig.max_tokens,
+            temperature: globalConfig.temperature
         };
     }
 

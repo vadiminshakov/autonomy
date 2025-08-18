@@ -98,7 +98,126 @@ func (t *Task) AddUserMessage(message string) {
 func (t *Task) ProcessTask() error {
 	defer t.Close()
 
-	// основной цикл выполнения задач
+	if hasDecomposedTask() {
+		return t.executeDecomposedTasks()
+	}
+
+	return t.executeDirectTask()
+}
+
+// executeDecomposedTasks executes decomposed tasks
+func (t *Task) executeDecomposedTasks() error {
+	decomposedTask, err := getDecomposedTask()
+	if err != nil {
+		return fmt.Errorf("failed to get decomposed task: %v", err)
+	}
+
+	clearDecomposedTask()
+
+	fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
+	fmt.Printf("Executing decomposed task with %d steps...\n", len(decomposedTask.Steps))
+
+	for i, step := range decomposedTask.Steps {
+		fmt.Printf("\n=== Step %d/%d: %s ===\n", i+1, len(decomposedTask.Steps), step.Description)
+		if step.Reason != "" {
+			fmt.Printf("    %s\n", ui.Dim("Reason: "+step.Reason))
+		}
+		
+		step.Status = "in_progress"
+		
+		if err := t.executeTaskStep(step); err != nil {
+			step.Status = "failed"
+			return fmt.Errorf("step %d failed: %v", i+1, err)
+		}
+		
+		step.Status = "completed"
+		fmt.Printf("✓ Step %d completed\n", i+1)
+	}
+
+	fmt.Println("\n🎉 All steps completed successfully!")
+	return nil
+}
+
+// executeTaskStep executes one task step with full AI-tools cycle
+func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
+	// add step description as user message
+	stepMessage := fmt.Sprintf("Execute this step: %s\n\nReason: %s", step.Description, step.Reason)
+	t.addUserMessage(stepMessage)
+
+	// execute cycle for this step
+	maxStepIterations := 20
+	
+	for iter := 0; iter < maxStepIterations; iter++ {
+		if err := t.checkCancellation(); err != nil {
+			return err
+		}
+
+		response, err := t.callAi()
+		if err != nil {
+			return fmt.Errorf("AI call failed: %v", err)
+		}
+
+		if response.Content != "" {
+			fmt.Printf("%s\n", NormalizeOutput(response.Content))
+		}
+
+		if len(response.ToolCalls) == 0 {
+			t.addAssistantMessage(response.Content)
+			if shouldAbort := t.handleNoTools(); shouldAbort {
+				return fmt.Errorf("step execution timed out - no tools used")
+			}
+			continue
+		}
+
+		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
+		t.resetNoToolCount()
+
+		completed, err := t.executeSequential(response.ToolCalls)
+		if err != nil {
+			return fmt.Errorf("tool execution failed: %v", err)
+		}
+
+		if completed {
+			return nil
+		}
+
+		if t.stepIsComplete(response.Content) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("step execution timed out after %d iterations", maxStepIterations)
+}
+
+// stepIsComplete checks if AI indicated that the step is completed
+func (t *Task) stepIsComplete(content string) bool {
+	content = strings.ToLower(content)
+	completionMarkers := []string{
+		"step completed successfully",
+		"task objective achieved", 
+		"implementation finished",
+		"step is complete",
+		"step completed",
+		"task completed", 
+		"done with this step",
+		"step is finished",
+		"moving to next step",
+		"this step is complete",
+		"objective achieved",
+		"successfully completed",
+	}
+	
+	for _, marker := range completionMarkers {
+		if strings.Contains(content, marker) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// executeDirectTask executes task directly without decomposition
+func (t *Task) executeDirectTask() error {
 	for iter := 0; iter < t.config.MaxIterations; iter++ {
 		if err := t.checkCancellation(); err != nil {
 			return err
@@ -124,7 +243,7 @@ func (t *Task) ProcessTask() error {
 		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
 		t.resetNoToolCount()
 
-		completed, err := t.executeTools(response.ToolCalls)
+		completed, err := t.executeSequential(response.ToolCalls)
 		if err != nil {
 			return fmt.Errorf("tool execution failed: %v", err)
 		}
@@ -156,87 +275,6 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 	return response, nil
 }
 
-func (t *Task) executeTools(calls []entity.ToolCall) (bool, error) {
-	// проверяем, есть ли декомпозированная задача
-	if hasDecomposedTask() {
-		return t.executeDecomposition()
-	}
-
-	// иначе выполняем tool calls обычным способом
-	return t.executeSequential(calls)
-}
-
-// executeDecomposition выполняет декомпозированную задачу напрямую
-func (t *Task) executeDecomposition() (bool, error) {
-	decomposedTask, err := getDecomposedTask()
-	if err != nil {
-		return false, fmt.Errorf("failed to get decomposed task: %v", err)
-	}
-
-	clearDecomposedTask()
-
-	fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
-	fmt.Printf("Executing decomposed task with %d steps...\n", len(decomposedTask.Steps))
-
-	ctx, cancel := context.WithTimeout(t.ctx, 10*time.Minute)
-	defer cancel()
-
-	for i, step := range decomposedTask.Steps {
-		if err := t.checkContext(ctx); err != nil {
-			return false, err
-		}
-
-		fmt.Printf("Step %d/%d: %s\n", i+1, len(decomposedTask.Steps), step.Description)
-
-		// выполняем логический шаг
-		result, err := t.executeLogicalTaskStep(ctx, step)
-		if err != nil {
-			fmt.Printf("Step execution failed: %v\n", err)
-			return false, err
-		}
-
-		fmt.Printf("Step %d completed: %s\n", i+1, result)
-	}
-
-	return false, nil
-}
-
-// executeLogicalTaskStep выполняет логический шаг задачи, отправляя описание модели
-func (t *Task) executeLogicalTaskStep(ctx context.Context, step decomposition.TaskStep) (string, error) {
-	// создаем сообщение с описанием шага
-	stepMessage := entity.Message{
-		Role:    "user",
-		Content: fmt.Sprintf("Execute this step: %s", step.Description),
-	}
-
-	// добавляем сообщение в историю
-	t.promptData.Messages = append(t.promptData.Messages, stepMessage)
-
-	// получаем ответ от модели используя существующий метод
-	response, err := t.client.GenerateCode(ctx, *t.promptData)
-	if err != nil {
-		return "", fmt.Errorf("failed to get AI response for logical step: %v", err)
-	}
-
-	// добавляем ответ модели в историю
-	t.promptData.Messages = append(t.promptData.Messages, entity.Message{
-		Role:    "assistant",
-		Content: response.Content,
-	})
-
-	// если модель вернула tool calls, выполняем их
-	if len(response.ToolCalls) > 0 {
-		completed, err := t.executeTools(response.ToolCalls)
-		if err != nil {
-			return "", err
-		}
-		if completed {
-			return "Step completed successfully", nil
-		}
-	}
-
-	return response.Content, nil
-}
 
 func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 	if len(calls) > 1 {
@@ -251,13 +289,13 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 			return false, err
 		}
 
-		// выполняем инструмент
+		// execute tool
 		result, err := t.exec(ctx, call)
 
-		// обрабатываем результат
+		// handle result
 		t.handleToolResult(call, result, err)
 
-		// проверяем завершение
+		// check completion
 		if call.Name == "attempt_completion" && err == nil {
 			return true, nil
 		}
@@ -348,22 +386,21 @@ func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) 
 			if call.Name == "attempt_completion" {
 				fmt.Println(ui.Info(result))
 			} else if isFileOperation(call.Name) {
-				// специальная обработка для файловых операций
+				// special handling for file operations
 				displayResult := limitFileToolOutput(result)
 				normalizedResult := NormalizeOutput(displayResult)
 				fmt.Printf("```\n%s\n```\n", normalizedResult)
 			} else {
 				result = limitToolOutput(result)
-				// нормализуем вывод для корректного отображения Unicode
+				// normalize output for correct Unicode display
 				normalizedResult := NormalizeOutput(result)
 				fmt.Printf("Tool result: %s\n", normalizedResult)
 			}
 		}
 	}
 
-	// ограничиваем результат для истории AI (не более 2000 символов)
-	historyResult := limitToolOutput(result)
-	t.promptData.AddToolResponse(call.ID, historyResult)
+	// save full result for AI, display limitation already applied above
+	t.promptData.AddToolResponse(call.ID, result)
 }
 
 func limitToolOutput(result string) string {
@@ -383,7 +420,7 @@ func limitToolOutput(result string) string {
 	return result
 }
 
-// isFileOperation проверяет является ли инструмент файловой операцией
+// isFileOperation checks if tool is a file operation
 func isFileOperation(toolName string) bool {
 	switch toolName {
 	case "read_file", "write_file", "lsp_edit":
@@ -393,29 +430,29 @@ func isFileOperation(toolName string) bool {
 	}
 }
 
-// limitFileToolOutput ограничивает вывод файловых операций до 13 строк и 1500 символов
+// limitFileToolOutput limits file operations output to 13 lines and 1500 characters
 func limitFileToolOutput(result string) string {
 	maxLines := 13
 	maxChars := 1500
 
-	// сначала ограничиваем по символам
+	// first limit by characters
 	if len(result) > maxChars {
-		result = result[:maxChars] + "\n... [показаны первые 1500 символов]"
+		result = result[:maxChars] + "\n... [showing first 1500 characters]"
 	}
 
-	// затем по строкам
+	// then by lines
 	lines := strings.Split(result, "\n")
 	if len(lines) > maxLines {
 		truncated := strings.Join(lines[:maxLines], "\n")
-		return truncated + "\n... [показаны первые 13 строк]"
+		return truncated + "\n... [showing first 13 lines]"
 	}
 
 	return result
 }
 
-// NormalizeOutput нормализует Unicode и убирает проблемные символы
+// NormalizeOutput normalizes Unicode and removes problematic characters
 func NormalizeOutput(s string) string {
-	// заменяем типографские кавычки и апострофы на обычные
+	// replace typographic quotes and apostrophes with regular ones
 	replacements := map[string]string{
 		"\u2018": "'",   // Left single quotation mark
 		"\u2019": "'",   // Right single quotation mark
@@ -431,10 +468,10 @@ func NormalizeOutput(s string) string {
 		result = strings.ReplaceAll(result, old, new)
 	}
 
-	// убираем только действительно проблемные управляющие символы
+	// remove only truly problematic control characters
 	var clean strings.Builder
 	for _, r := range result {
-		// разрешаем: переводы строк, табы, обычные печатные символы и Unicode символы
+		// allow: newlines, tabs, regular printable characters and Unicode characters
 		if r == '\n' || r == '\t' || r == '\r' || (r >= 32 && r != 127) || r > 127 {
 			clean.WriteRune(r)
 		}
@@ -690,7 +727,7 @@ func min(a, b int) int {
 	return b
 }
 
-// extractTaskFromHistory извлекает задачу из истории сообщений
+// extractTaskFromHistory extracts task from message history
 func (t *Task) extractTaskFromHistory() string {
 	for _, msg := range t.promptData.Messages {
 		if msg.Role == "user" && len(msg.Content) > 10 {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestLspEdit_SimpleEdit(t *testing.T) {
-	// создаем временный файл для тестирования
+	// create temporary file for testing
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.go")
 
@@ -24,7 +24,7 @@ func main() {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// применяем одно редактирование - заменяем "hello" на "world"
+	// apply single edit - replace "hello" with "world"
 	args := map[string]interface{}{
 		"path": testFile,
 		"edits": []interface{}{
@@ -46,7 +46,7 @@ func main() {
 		t.Errorf("Expected result to mention 1 edit, got: %s", result)
 	}
 
-	// проверяем результат
+	// check the result
 	modifiedContent, err := os.ReadFile(testFile)
 	if err != nil {
 		t.Fatalf("Failed to read modified file: %v", err)
@@ -83,7 +83,7 @@ func main() {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// применяем несколько редактирований
+	// apply multiple edits
 	args := map[string]interface{}{
 		"path": testFile,
 		"edits": []interface{}{
@@ -109,7 +109,7 @@ func main() {
 		t.Errorf("Expected result to mention 2 edits, got: %s", result)
 	}
 
-	// проверяем результат
+	// check the result
 	modifiedContent, err := os.ReadFile(testFile)
 	if err != nil {
 		t.Fatalf("Failed to read modified file: %v", err)
@@ -144,13 +144,13 @@ func main() {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// добавляем импорт и код
+	// add import and code
 	args := map[string]interface{}{
 		"path": testFile,
 		"edits": []interface{}{
 			map[string]interface{}{
 				"start_line": 2,
-				"end_line":   2, // вставка в строку 2
+				"end_line":   2, // insert at line 2
 				"new_text":   "\nimport \"fmt\"",
 			},
 			map[string]interface{}{
@@ -170,7 +170,7 @@ func main() {
 		t.Errorf("Expected result to mention 2 edits, got: %s", result)
 	}
 
-	// проверяем результат
+	// check the result
 	modifiedContent, err := os.ReadFile(testFile)
 	if err != nil {
 		t.Fatalf("Failed to read modified file: %v", err)
@@ -198,12 +198,12 @@ func main() {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// тест недопустимых номеров строк
+	// test invalid line numbers
 	args := map[string]interface{}{
 		"path": testFile,
 		"edits": []interface{}{
 			map[string]interface{}{
-				"start_line": 0, // недопустимо - должно быть >= 1
+				"start_line": 0, // invalid - should be >= 1
 				"end_line":   1,
 				"new_text":   "// comment",
 			},
@@ -215,13 +215,13 @@ func main() {
 		t.Error("Expected error for invalid start_line, but got none")
 	}
 
-	// тест end_line < start_line
+	// test end_line < start_line
 	args = map[string]interface{}{
 		"path": testFile,
 		"edits": []interface{}{
 			map[string]interface{}{
 				"start_line": 3,
-				"end_line":   2, // недопустимо
+				"end_line":   2, // invalid
 				"new_text":   "// comment",
 			},
 		},

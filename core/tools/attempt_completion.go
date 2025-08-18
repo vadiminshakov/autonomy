@@ -12,7 +12,7 @@ func init() {
 func AttemptCompletion(args map[string]interface{}) (string, error) {
 	result, _ := args["result"].(string)
 
-	// проверяем обязательный параметр
+	// check required parameter
 	if result == "" {
 		return "", fmt.Errorf("parameter 'result' is required for attempt_completion")
 	}
@@ -20,7 +20,7 @@ func AttemptCompletion(args map[string]interface{}) (string, error) {
 	// do not allow completion if there are recorded errors
 	state := getTaskState()
 	if len(state.Errors) > 0 {
-		// показываем последние 3 ошибки для контекста
+		// show last 3 errors for context
 		errCount := len(state.Errors)
 		showErrors := 3
 		if errCount < showErrors {

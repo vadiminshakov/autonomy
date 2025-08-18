@@ -27,11 +27,18 @@ func main() {
 }
 
 func runProgram(headless bool) {
+	if headless {
+		fmt.Print("Autonomy agent is ready\n")
+		
+		if err := terminal.RunHeadlessWithInit(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+		
+		return
+	}
+	
 	cfg, err := config.LoadConfigFile()
 	if err != nil {
-		if headless {
-			log.Fatal(ui.Error("failed to load configuration in headless mode: " + err.Error()))
-		}
 		cfg, err = config.InteractiveSetup()
 		if err != nil {
 			log.Fatal(ui.Error("failed to set up configuration: " + err.Error()))
@@ -52,13 +59,7 @@ func runProgram(headless bool) {
 		defer indexManager.StopAutoRebuild()
 	}
 
-	if headless {
-		if err := terminal.RunHeadless(client); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		if err := terminal.RunTerminal(client); err != nil {
-			log.Fatal(err)
-		}
+	if err := terminal.RunTerminal(client); err != nil {
+		log.Fatal(err)
 	}
 }
