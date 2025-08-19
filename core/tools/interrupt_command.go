@@ -83,11 +83,15 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 		// Analyze the output to understand what happened
 		analysis := analyzeCommandOutput(output.String(), cmdStr)
 
-		return fmt.Sprintf("command was interrupted after 10 seconds. output analysis:\n\n%s\n\npartial output:\n%s", analysis, output.String()), nil
+		msg := "command was interrupted after 10 seconds. output analysis:\n\n%s\n\n" +
+			"partial output:\n%s"
+		return fmt.Sprintf(msg, analysis, output.String()), nil
 	}
 }
 
 // analyzeCommandOutput analyzes command output to understand execution progress
+//
+//nolint:gocyclo
 func analyzeCommandOutput(output, command string) string {
 	if output == "" {
 		return "no output captured before interruption"

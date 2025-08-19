@@ -141,30 +141,7 @@ func (h *AnthropicHandler) GenerateCode(ctx context.Context, promptData entity.P
 	}
 
 	// Convert tools to Anthropic format
-	var anthropicTools []AnthropicTool
-	for _, tool := range promptData.Tools {
-		anthropicTool := AnthropicTool{
-			Name:        tool.Name,
-			Description: tool.Description,
-		}
-
-		// Convert input schema
-		if tool.InputSchema != nil {
-			anthropicTool.InputSchema.Type = "object"
-			if properties, ok := tool.InputSchema["properties"].(map[string]interface{}); ok {
-				anthropicTool.InputSchema.Properties = properties
-			}
-			if required, ok := tool.InputSchema["required"].([]interface{}); ok {
-				for _, req := range required {
-					if reqStr, ok := req.(string); ok {
-						anthropicTool.InputSchema.Required = append(anthropicTool.InputSchema.Required, reqStr)
-					}
-				}
-			}
-		}
-
-		anthropicTools = append(anthropicTools, anthropicTool)
-	}
+	anthropicTools := h.convertTools(promptData.Tools)
 
 	// Convert messages to Anthropic format
 	var anthropicMessages []AnthropicMessage
@@ -204,29 +181,7 @@ func (h *AnthropicHandler) GenerateCodeStream(ctx context.Context, promptData en
 		defer close(errorChan)
 
 		// Convert tools and messages same as non-streaming version
-		var anthropicTools []AnthropicTool
-		for _, tool := range promptData.Tools {
-			anthropicTool := AnthropicTool{
-				Name:        tool.Name,
-				Description: tool.Description,
-			}
-
-			if tool.InputSchema != nil {
-				anthropicTool.InputSchema.Type = "object"
-				if properties, ok := tool.InputSchema["properties"].(map[string]interface{}); ok {
-					anthropicTool.InputSchema.Properties = properties
-				}
-				if required, ok := tool.InputSchema["required"].([]interface{}); ok {
-					for _, req := range required {
-						if reqStr, ok := req.(string); ok {
-							anthropicTool.InputSchema.Required = append(anthropicTool.InputSchema.Required, reqStr)
-						}
-					}
-				}
-			}
-
-			anthropicTools = append(anthropicTools, anthropicTool)
-		}
+		anthropicTools := h.convertTools(promptData.Tools)
 
 		var anthropicMessages []AnthropicMessage
 		for _, msg := range promptData.Messages {
@@ -259,6 +214,7 @@ func (h *AnthropicHandler) GenerateCodeStream(ctx context.Context, promptData en
 	return textChan, errorChan
 }
 
+//nolint:gocyclo
 func (h *AnthropicHandler) sendStreamRequest(ctx context.Context, reqData AnthropicRequest, textChan chan<- string) error {
 	jsonData, err := json.Marshal(reqData)
 	if err != nil {
@@ -344,7 +300,10 @@ func (h *AnthropicHandler) convertMessage(msg entity.Message) *AnthropicMessage 
 				// Parse arguments
 				var input map[string]interface{}
 				if toolCall.Arguments != "" {
-					json.Unmarshal([]byte(toolCall.Arguments), &input)
+					if err := json.Unmarshal([]byte(toolCall.Arguments), &input); err != nil {
+						// Skip malformed tool call arguments
+						continue
+					}
 				} else if toolCall.Args != nil {
 					input = toolCall.Args
 				}
@@ -424,53 +383,7 @@ func (h *AnthropicHandler) sendRequest(ctx context.Context, reqData AnthropicReq
 	return h.convertResponse(anthropicResp)
 }
 
-// validateRequest validates the request before sending to Anthropic API
-func (h *AnthropicHandler) validateRequest(req AnthropicRequest) error {
-	if req.Model == "" {
-		return fmt.Errorf("model is required")
-	}
-	if req.MaxTokens <= 0 {
-		return fmt.Errorf("max_tokens must be positive")
-	}
-	if len(req.Messages) == 0 {
-		return fmt.Errorf("messages array cannot be empty")
-	}
-
-	// Validate message structure
-	for i, msg := range req.Messages {
-		if msg.Role == "" {
-			return fmt.Errorf("message %d: role is required", i)
-		}
-		if len(msg.Content) == 0 {
-			return fmt.Errorf("message %d: content cannot be empty", i)
-		}
-
-		// Validate content blocks
-		for j, content := range msg.Content {
-			if content.Type == "" {
-				return fmt.Errorf("message %d, content %d: type is required", i, j)
-			}
-		}
-	}
-
-	return nil
-}
-
-// wrapHTTPError wraps HTTP errors with more context
-func (h *AnthropicHandler) wrapHTTPError(err error) error {
-	if strings.Contains(err.Error(), "timeout") {
-		return fmt.Errorf("request timeout - Anthropic API may be slow: %w", err)
-	}
-	if strings.Contains(err.Error(), "connection refused") {
-		return fmt.Errorf("connection refused - check if Anthropic API is accessible: %w", err)
-	}
-	if strings.Contains(err.Error(), "no such host") {
-		return fmt.Errorf("DNS resolution failed - check internet connection: %w", err)
-	}
-	return fmt.Errorf("anthropic api request failed: %w", err)
-}
-
-// parseError parses error response from Anthropic API
+//nolint:gocyclo
 func (h *AnthropicHandler) parseError(statusCode int, body []byte) error {
 	var errorResp AnthropicErrorResponse
 	if json.Unmarshal(body, &errorResp) == nil {
@@ -516,6 +429,7 @@ func (h *AnthropicHandler) parseError(statusCode int, body []byte) error {
 	}
 }
 
+//nolint:unparam
 func (h *AnthropicHandler) convertResponse(resp AnthropicResponse) (*entity.AIResponse, error) {
 	var aiResponse entity.AIResponse
 	var textParts []string
@@ -645,4 +559,84 @@ func (h *AnthropicHandler) AddImageToMessage(content []AnthropicContent, imageDa
 		},
 	}
 	return append(content, imageContent)
+}
+
+// validateRequest validates the request before sending to Anthropic API
+func (h *AnthropicHandler) validateRequest(req AnthropicRequest) error {
+	if req.Model == "" {
+		return fmt.Errorf("model is required")
+	}
+	if req.MaxTokens <= 0 {
+		return fmt.Errorf("max_tokens must be positive")
+	}
+	if len(req.Messages) == 0 {
+		return fmt.Errorf("messages array cannot be empty")
+	}
+
+	// Validate message structure
+	for i, msg := range req.Messages {
+		if msg.Role == "" {
+			return fmt.Errorf("message %d: role is required", i)
+		}
+		if len(msg.Content) == 0 {
+			return fmt.Errorf("message %d: content cannot be empty", i)
+		}
+
+		// Validate content blocks
+		for j, content := range msg.Content {
+			if content.Type == "" {
+				return fmt.Errorf("message %d, content %d: type is required", i, j)
+			}
+		}
+	}
+
+	return nil
+}
+
+// wrapHTTPError wraps HTTP errors with more context
+func (h *AnthropicHandler) wrapHTTPError(err error) error {
+	if strings.Contains(err.Error(), "timeout") {
+		return fmt.Errorf("request timeout - Anthropic API may be slow: %w", err)
+	}
+	if strings.Contains(err.Error(), "connection refused") {
+		return fmt.Errorf("connection refused - check if Anthropic API is accessible: %w", err)
+	}
+	if strings.Contains(err.Error(), "no such host") {
+		return fmt.Errorf("DNS resolution failed - check internet connection: %w", err)
+	}
+	return fmt.Errorf("anthropic api request failed: %w", err)
+}
+
+// convertTool converts entity tool definition to Anthropic tool format
+func (h *AnthropicHandler) convertTool(tool entity.ToolDefinition) AnthropicTool {
+	anthropicTool := AnthropicTool{
+		Name:        tool.Name,
+		Description: tool.Description,
+	}
+
+	if tool.InputSchema != nil {
+		anthropicTool.InputSchema.Type = "object"
+		if properties, ok := tool.InputSchema["properties"].(map[string]interface{}); ok {
+			anthropicTool.InputSchema.Properties = properties
+		}
+		if required, ok := tool.InputSchema["required"].([]interface{}); ok {
+			for _, req := range required {
+				if reqStr, ok := req.(string); ok {
+					anthropicTool.InputSchema.Required = append(anthropicTool.InputSchema.Required, reqStr)
+				}
+			}
+		}
+	}
+
+	return anthropicTool
+}
+
+// convertTools converts entity tool definitions to Anthropic tools format
+func (h *AnthropicHandler) convertTools(tools []entity.ToolDefinition) []AnthropicTool {
+	var anthropicTools []AnthropicTool
+	for _, tool := range tools {
+		anthropicTools = append(anthropicTools, h.convertTool(tool))
+	}
+
+	return anthropicTools
 }

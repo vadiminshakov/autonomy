@@ -292,7 +292,7 @@ func (im *IndexManager) periodicRebuild() {
 			}
 			im.mu.RUnlock()
 
-			go im.RebuildIndex()
+			go im.RebuildIndex() //nolint:errcheck
 
 		case <-im.ctx.Done():
 			return

@@ -102,12 +102,16 @@ func TestAnalyzeCommandOutputEmpty(t *testing.T) {
 
 func TestInterruptCommandRecordsState(t *testing.T) {
 	// reset task state
-	resetTaskState(map[string]interface{}{})
+	if _, err := resetTaskState(map[string]interface{}{}); err != nil {
+		t.Fatalf("failed to reset task state: %v", err)
+	}
 
 	// run interrupted command that produces output
-	InterruptCommand(map[string]interface{}{
+	if _, err := InterruptCommand(map[string]interface{}{
 		"command": "echo 'starting long process' && sleep 20",
-	})
+	}); err != nil {
+		t.Fatalf("InterruptCommand returned error: %v", err)
+	}
 
 	// check if state was recorded
 	state := getTaskState()

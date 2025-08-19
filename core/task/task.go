@@ -122,14 +122,14 @@ func (t *Task) executeDecomposedTasks() error {
 		if step.Reason != "" {
 			fmt.Printf("    %s\n", ui.Dim("Reason: "+step.Reason))
 		}
-		
+
 		step.Status = "in_progress"
-		
+
 		if err := t.executeTaskStep(step); err != nil {
 			step.Status = "failed"
 			return fmt.Errorf("step %d failed: %v", i+1, err)
 		}
-		
+
 		step.Status = "completed"
 		fmt.Printf("✓ Step %d completed\n", i+1)
 	}
@@ -146,7 +146,7 @@ func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
 
 	// execute cycle for this step
 	maxStepIterations := 20
-	
+
 	for iter := 0; iter < maxStepIterations; iter++ {
 		if err := t.checkCancellation(); err != nil {
 			return err
@@ -194,11 +194,11 @@ func (t *Task) stepIsComplete(content string) bool {
 	content = strings.ToLower(content)
 	completionMarkers := []string{
 		"step completed successfully",
-		"task objective achieved", 
+		"task objective achieved",
 		"implementation finished",
 		"step is complete",
 		"step completed",
-		"task completed", 
+		"task completed",
 		"done with this step",
 		"step is finished",
 		"moving to next step",
@@ -206,13 +206,13 @@ func (t *Task) stepIsComplete(content string) bool {
 		"objective achieved",
 		"successfully completed",
 	}
-	
+
 	for _, marker := range completionMarkers {
 		if strings.Contains(content, marker) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -274,7 +274,6 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 
 	return response, nil
 }
-
 
 func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 	if len(calls) > 1 {
@@ -633,29 +632,6 @@ func (t *Task) copyPromptData() entity.PromptData {
 	return promptCopy
 }
 
-func (t *Task) handleAIError(err error) error {
-	fmt.Println(ui.Error("AI error: " + err.Error()))
-
-	if strings.Contains(err.Error(), "400 Bad Request") {
-		fmt.Println(ui.Warning("This usually means:"))
-		fmt.Println(ui.Dim("   • The model doesn't support function calling"))
-		fmt.Println(ui.Dim("   • The request format is incompatible"))
-		fmt.Println(ui.Dim("   • Try using a different model or provider"))
-	} else if strings.Contains(err.Error(), "401") {
-		fmt.Println(ui.Warning("This usually means:"))
-		fmt.Println(ui.Dim("   • API key is invalid or expired"))
-		fmt.Println(ui.Dim("   • Check your configuration"))
-	} else if strings.Contains(err.Error(), "429") {
-		fmt.Println(ui.Warning("This usually means:"))
-		fmt.Println(ui.Dim("   • Rate limit exceeded"))
-		fmt.Println(ui.Dim("   • Wait a moment and try again"))
-	}
-
-	fmt.Println(ui.Info("Please try again or rephrase the request"))
-
-	return err
-}
-
 func formatFindFilesArgs(args map[string]any) string {
 	var parts []string
 
@@ -718,21 +694,4 @@ func clearDecomposedTask() {
 	state := tools.GetTaskState()
 	state.SetContext("has_decomposed_task", false)
 	state.SetContext("decomposed_task", nil)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// extractTaskFromHistory extracts task from message history
-func (t *Task) extractTaskFromHistory() string {
-	for _, msg := range t.promptData.Messages {
-		if msg.Role == "user" && len(msg.Content) > 10 {
-			return msg.Content
-		}
-	}
-	return "Complete the assigned task"
 }

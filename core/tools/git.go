@@ -89,6 +89,7 @@ func GitDiff(args map[string]interface{}) (string, error) {
 	return fmt.Sprintf("Git diff:\n%s", result), nil
 }
 
+//nolint:gocyclo
 func GitBranch(args map[string]interface{}) (string, error) {
 	action, ok := args["action"].(string)
 	if !ok || action == "" {

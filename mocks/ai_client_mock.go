@@ -6,8 +6,9 @@ package mocks
 
 import (
 	context "context"
-	entity "github.com/vadiminshakov/autonomy/core/entity"
 	reflect "reflect"
+
+	entity "github.com/vadiminshakov/autonomy/core/entity"
 
 	gomock "github.com/golang/mock/gomock"
 )

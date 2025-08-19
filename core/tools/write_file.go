@@ -12,6 +12,7 @@ func init() {
 	Register("write_file", WriteFile)
 }
 
+//nolint:gocyclo
 func WriteFile(args map[string]interface{}) (string, error) {
 	var pathVal string
 	var ok bool

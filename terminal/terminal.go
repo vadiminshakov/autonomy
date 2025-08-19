@@ -70,14 +70,14 @@ func RunHeadless(client ai.AIClient) error {
 	inputChan := make(chan string)
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
-		
+
 		for scanner.Scan() {
 			input := strings.TrimSpace(scanner.Text())
 			inputChan <- input
 		}
 		close(inputChan)
 	}()
-	
+
 	for input := range inputChan {
 		if input == "" {
 			continue

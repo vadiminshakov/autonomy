@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sashabaranov/go-openai"
+
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/entity"
 )

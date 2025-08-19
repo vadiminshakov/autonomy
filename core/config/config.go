@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/manifoldco/promptui"
+
 	"github.com/vadiminshakov/autonomy/core/entity"
 )
 
@@ -82,6 +83,7 @@ func saveConfigFile(cfg Config) error {
 	return enc.Encode(cfg)
 }
 
+//nolint:gocyclo
 func InteractiveSetup() (Config, error) {
 	configTypes := []string{"cloud", "local"}
 	typeSel := promptui.Select{

@@ -28,33 +28,33 @@ func RunHeadlessSimple() error {
 func RunHeadlessWithInit() error {
 	var client ai.AIClient
 	var initialized = false
-	
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		input := strings.TrimSpace(scanner.Text())
-		
+
 		if input == "exit" || input == "quit" {
 			break
 		}
-		
+
 		if input == "" {
 			continue
 		}
-		
+
 		// Initialize AI client on first real task
 		if !initialized {
 			fmt.Printf("Initializing AI client for task: %s\n", input)
-			
+
 			cfg, err := config.LoadConfigFile()
 			if err != nil {
 				fmt.Printf("Error: No configuration found. %v\n", err)
 				continue
 			}
-			
+
 			// Create AI client with timeout
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			initChan := make(chan error, 1)
-			
+
 			go func() {
 				c, err := ai.ProvideAiClient(cfg)
 				if err != nil {
@@ -64,7 +64,7 @@ func RunHeadlessWithInit() error {
 					initChan <- nil
 				}
 			}()
-			
+
 			select {
 			case err := <-initChan:
 				cancel()
@@ -80,21 +80,21 @@ func RunHeadlessWithInit() error {
 				continue
 			}
 		}
-		
+
 		// Process the task
 		t := task.NewTask(client)
 		t.SetOriginalTask(input)
 		t.AddUserMessage(input)
-		
+
 		err := t.ProcessTask()
 		t.Close()
-		
+
 		if err != nil {
 			fmt.Printf("Task failed: %v\n", err)
 		} else {
 			fmt.Printf("Task completed\n")
 		}
 	}
-	
+
 	return nil
 }

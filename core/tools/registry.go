@@ -13,7 +13,6 @@ var registry = make(map[string]ToolFunc)
 func ClearRegistry() {
 	registry = make(map[string]ToolFunc)
 }
-
 func Register(name string, fn ToolFunc) {
 	registry[name] = fn
 }
@@ -124,7 +123,6 @@ func logToolCall(_ string, args map[string]any) {
 			logArgs[k] = v
 		}
 	}
-
 }
 
 func List() []string {

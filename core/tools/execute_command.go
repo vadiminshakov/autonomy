@@ -42,7 +42,9 @@ func ExecuteCommand(args map[string]interface{}) (string, error) {
 	state.RecordCommandExecuted(cmdStr)
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return string(out), fmt.Errorf("command exceeded %ds timeout. use 'interrupt_command' for long-running commands that need analysis", int(timeout.Seconds()))
+		msg := "command exceeded %ds timeout. " +
+			"use 'interrupt_command' for long-running commands that need analysis"
+		return string(out), fmt.Errorf(msg, int(timeout.Seconds()))
 	}
 
 	if err != nil {

@@ -16,7 +16,7 @@ type TaskStep struct {
 	Description  string   `json:"description"`
 	Reason       string   `json:"reason"`
 	Dependencies []string `json:"dependencies,omitempty"`
-	Status       string   `json:"status,omitempty"` // pending, in_progress, completed, failed
+	Status       string   `json:"status,omitempty"`       // pending, in_progress, completed, failed
 	MaxAttempts  int      `json:"max_attempts,omitempty"` // maximum number of attempts
 }
 
@@ -44,9 +44,8 @@ func NewTaskDecomposer(cfg config.Config) (*TaskDecomposer, error) {
 func (td *TaskDecomposer) DecomposeTask(
 	ctx context.Context,
 	taskDescription string,
-	availableTools []entity.ToolDefinition,
 ) (*DecompositionResult, error) {
-	prompt := td.buildDecompositionPrompt(taskDescription, availableTools)
+	prompt := td.buildDecompositionPrompt(taskDescription)
 
 	response, err := td.aiClient.GenerateCode(ctx, prompt)
 	if err != nil {
@@ -61,7 +60,7 @@ func (td *TaskDecomposer) DecomposeTask(
 	return result, nil
 }
 
-func (td *TaskDecomposer) buildDecompositionPrompt(taskDescription string, availableTools []entity.ToolDefinition) entity.PromptData {
+func (td *TaskDecomposer) buildDecompositionPrompt(taskDescription string) entity.PromptData {
 	systemPrompt := `You are a task decomposition expert. Follow this structured approach for breaking down programming tasks:
 
 1. ANALYZE: Understand the task requirements, current state, and desired outcome

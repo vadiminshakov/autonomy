@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -14,7 +15,7 @@ func AttemptCompletion(args map[string]interface{}) (string, error) {
 
 	// check required parameter
 	if result == "" {
-		return "", fmt.Errorf("parameter 'result' is required for attempt_completion")
+		return "", errors.New("parameter 'result' is required for attempt_completion")
 	}
 
 	// do not allow completion if there are recorded errors
@@ -34,7 +35,7 @@ func AttemptCompletion(args map[string]interface{}) (string, error) {
 		}
 		errMsg += "\nHint: Fix the errors or use 'reset_task_state' to clear error history if they are resolved"
 
-		return "", fmt.Errorf(errMsg)
+		return "", errors.New(errMsg)
 	}
 
 	// Record completion in task state

@@ -29,14 +29,14 @@ func main() {
 func runProgram(headless bool) {
 	if headless {
 		fmt.Print("Autonomy agent is ready\n")
-		
+
 		if err := terminal.RunHeadlessWithInit(); err != nil {
 			fmt.Printf("Error: %v\n", err)
 		}
-		
+
 		return
 	}
-	
+
 	cfg, err := config.LoadConfigFile()
 	if err != nil {
 		cfg, err = config.InteractiveSetup()

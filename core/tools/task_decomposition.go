@@ -8,7 +8,6 @@ import (
 
 	"github.com/vadiminshakov/autonomy/core/config"
 	"github.com/vadiminshakov/autonomy/core/decomposition"
-	"github.com/vadiminshakov/autonomy/core/entity"
 )
 
 func init() {
@@ -38,12 +37,10 @@ func DecomposeTask(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("failed to create task decomposer: %v", err)
 	}
 
-	availableTools := getAvailableToolDefinitions()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	result, err := decomposer.DecomposeTask(ctx, taskDesc, availableTools)
+	result, err := decomposer.DecomposeTask(ctx, taskDesc)
 	if err != nil {
 		return "", fmt.Errorf("failed to decompose task: %v", err)
 	}
@@ -103,9 +100,4 @@ func ClearDecomposedTask() {
 	state := getTaskState()
 	state.SetContext("has_decomposed_task", false)
 	state.SetContext("decomposed_task", nil)
-}
-
-// getAvailableToolDefinitions returns tool definitions for all registered tools
-func getAvailableToolDefinitions() []entity.ToolDefinition {
-	return GetToolDescriptions()
 }

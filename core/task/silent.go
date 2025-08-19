@@ -19,6 +19,7 @@ func isSilentTool(name string) bool {
 	return silentTools[name]
 }
 
+//nolint:gocyclo
 func silentToolSummary(toolName string, args map[string]any, result string) string {
 	switch toolName {
 	case "read_file":

@@ -25,9 +25,7 @@ type EditRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
-// lspEdit applies text edits to files using Language Server Protocol approach
-// args["path"] - file path to edit
-// args["edits"] - JSON array of edit operations
+//nolint:gocyclo
 func lspEdit(args map[string]interface{}) (string, error) {
 	pathVal, ok := args["path"].(string)
 	if !ok || strings.TrimSpace(pathVal) == "" {
@@ -134,7 +132,7 @@ func lspEdit(args map[string]interface{}) (string, error) {
 
 	// create backup
 	backupPath := pathVal + ".backup." + fmt.Sprintf("%d", time.Now().Unix())
-	if err := os.WriteFile(backupPath, content, 0644); err != nil {
+	if err := os.WriteFile(backupPath, content, 0600); err != nil {
 		return "", fmt.Errorf("failed to create backup: %v", err)
 	}
 	defer os.Remove(backupPath)
@@ -159,9 +157,11 @@ func lspEdit(args map[string]interface{}) (string, error) {
 
 	// write the result
 	newContent := strings.Join(modifiedLines, "\n")
-	if err := os.WriteFile(pathVal, []byte(newContent), 0644); err != nil {
+	if err := os.WriteFile(pathVal, []byte(newContent), 0600); err != nil {
 		// restore from backup on error
-		os.WriteFile(pathVal, content, 0644)
+		if rerr := os.WriteFile(pathVal, content, 0600); rerr != nil {
+			return "", fmt.Errorf("failed to write modified file: %v; also failed to restore backup: %v", err, rerr)
+		}
 		return "", fmt.Errorf("failed to write modified file: %v", err)
 	}
 
@@ -169,7 +169,9 @@ func lspEdit(args map[string]interface{}) (string, error) {
 	if strings.HasSuffix(pathVal, ".go") {
 		if err := validateGoSyntax(pathVal); err != nil {
 			// restore from backup on syntax error
-			os.WriteFile(pathVal, content, 0644)
+			if rerr := os.WriteFile(pathVal, content, 0600); rerr != nil {
+				return "", fmt.Errorf("syntax validation failed: %v; also failed to restore backup: %v", err, rerr)
+			}
 			return "", fmt.Errorf("syntax validation failed: %v", err)
 		}
 	}
