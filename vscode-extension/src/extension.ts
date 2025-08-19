@@ -16,19 +16,19 @@ export function activate(context: vscode.ExtensionContext) {
     webviewProvider = new AutonomyWebviewProvider(context.extensionUri, configManager);
 
     console.log('Starting quick autonomy check...');
-    // Запускаем проверку в фоне без блокировки расширения
+    // Run check in background without blocking extension
     quickCheckAutonomy(context).then((available) => {
         if (available) {
             console.log('Autonomy is available, webview can auto-start');
             webviewProvider.enableAutoStart();
         } else {
             console.log('Autonomy not immediately available, but webview will still try to auto-start');
-            // всё равно включаем автостарт, пусть webview сам разбирается
+            // enable auto-start anyway, let webview handle it itself
             webviewProvider.enableAutoStart();
         }
     }).catch(error => {
         console.error('Error in quickCheckAutonomy:', error);
-        // не блокируем автостарт даже если проверка не удалась
+        // don't block auto-start even if check failed
         webviewProvider.enableAutoStart();
     });
 
@@ -42,19 +42,19 @@ export function activate(context: vscode.ExtensionContext) {
     const startCommand = vscode.commands.registerCommand('autonomy.start', async (fromWebview?: boolean) => {
         console.log('extension: autonomy.start command called - delegating to webview');
 
-        // Теперь все управление агентами происходит через webview
-        // Эта команда остается для обратной совместимости
+        // Now all agent management happens through webview
+        // This command remains for backward compatibility
         if (fromWebview) {
             console.log('extension: Start request from webview - handled internally');
             return;
         }
 
-        // Для команд не из webview показываем сообщение
+        // For commands not from webview show message
         vscode.window.showInformationMessage('Autonomy agent is managed through the Autonomy panel. Please use the webview interface.');
     });
 
     const runTaskCommand = vscode.commands.registerCommand('autonomy.runTask', async (taskMessage?: string) => {
-        // Теперь все задачи выполняются через webview
+        // Now all tasks are executed through webview
         let task = taskMessage;
         if (!task) {
             task = await vscode.window.showInputBox({
@@ -65,10 +65,10 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         if (task) {
-            // Передаем задачу в webview
+            // Pass task to webview
             webviewProvider.handleTaskFromCommand(task);
 
-            // Показываем webview
+            // Show webview
             vscode.commands.executeCommand('autonomyWebview.focus');
         }
     });
@@ -143,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('✅ Autonomy extension activation completed');
 }
 
-// быстрая проверка наличия autonomy без установки
+// quick check for autonomy presence without installation
 async function quickCheckAutonomy(context: vscode.ExtensionContext): Promise<boolean> {
     console.log('quickCheckAutonomy: Quick check for autonomy...');
     const { exec } = require('child_process');
@@ -166,7 +166,7 @@ async function quickCheckAutonomy(context: vscode.ExtensionContext): Promise<boo
             }
         });
 
-        // Таймаут 3 секунды
+        // 3 second timeout
         setTimeout(() => {
             if (!child.killed) {
                 child.kill('SIGTERM');
@@ -187,7 +187,7 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
         console.log('checkIfAutonomyExists: Checking autonomy --version...');
         return new Promise((resolve) => {
             const checkOptions = {
-                timeout: 5000, // 5 секунд таймаут
+                timeout: 5000, // 5 second timeout
                 env: {
                     ...process.env,
                     PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
@@ -211,7 +211,7 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                 }
             });
 
-            // Принудительно завершаем через 5 секунд если команда зависла
+            // Force terminate after 5 seconds if command hangs
             setTimeout(() => {
                 if (!child.killed) {
                     console.log('checkIfAutonomyExists: Timeout reached, killing process');
@@ -405,7 +405,7 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
 export function deactivate() {
     console.log('extension: Deactivating Autonomy extension');
 
-    // Останавливаем глобальный агент
+    // Stop global agent
     if (autonomyAgent) {
         console.log('extension: Stopping global autonomy agent');
         autonomyAgent.stop().catch(error => {
@@ -413,7 +413,7 @@ export function deactivate() {
         });
     }
 
-    // Останавливаем агент в webview
+    // Stop webview agent
     if (webviewProvider) {
         console.log('extension: Stopping webview autonomy agent');
         webviewProvider.cleanup().catch(error => {

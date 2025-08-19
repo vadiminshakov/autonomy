@@ -41,7 +41,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Добавляем обработчик закрытия webview
+        // Add webview disposal handler
         webviewView.onDidDispose(() => {
             console.log('webviewProvider: Webview disposed, stopping autonomy agent');
             this.stopAutonomyAgent();
@@ -90,7 +90,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             }
         }, 1000);
 
-        // автозапуск агента при открытии webview
+        // auto-start agent when opening webview
         setTimeout(() => {
             this.attemptAutoStart();
         }, 800);
@@ -166,7 +166,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
 
     private async startFreshAgent() {
-        // Останавливаем текущий агент, если он есть
+        // Stop current agent if it exists
         if (this.autonomyAgent) {
             await this.stopAutonomyAgent();
         }
@@ -178,14 +178,14 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Создаем новый агент
+            // Create new agent
             const { AutonomyAgent } = require('./autonomyAgent');
             const { AutonomyTaskProvider } = require('./taskProvider');
 
             const taskProvider = new AutonomyTaskProvider();
             this.autonomyAgent = new AutonomyAgent(config, taskProvider);
 
-            // Настраиваем агент для webview
+            // Configure agent for webview
             this.autonomyAgent!.setOutputCallback((output: string, type: 'stdout' | 'stderr' | 'task_status') => {
                 this.sendAgentOutput(output, type);
             });
@@ -233,7 +233,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async autoStartAgent() {
-        // Переадресуем на новый метод
+        // Redirect to new method
         return this.startFreshAgent();
     }
 
@@ -257,7 +257,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         filtered = filtered.replace(/\uFFFD/g, '');  // Remove � character
         filtered = filtered.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''); // Remove control characters
 
-        // убираем экранированные символы если они случайно попали
+        // remove escaped characters if they accidentally got in
         filtered = filtered.replace(/\\n/g, '\n');
         filtered = filtered.replace(/\\t/g, '\t');
         filtered = filtered.replace(/\\r/g, '\r');
@@ -379,7 +379,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleSendMessage(message: string) {
-        // Защита от множественных вызовов
+        // Protection against multiple calls
         if (this.isProcessingMessage) {
             console.log('webviewProvider: Already processing message, ignoring duplicate');
             return;
@@ -394,16 +394,16 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Добавляем пользовательское сообщение в историю и отправляем в webview
+            // Add user message to history and send to webview
             this.addToHistory('user', message);
             this.sendMessage('user', message);
 
-            // проверяем состояние агента и перезапускаем если нужно
+            // check agent status and restart if needed
             if (!this.autonomyAgent || !this.autonomyAgent.isRunning()) {
                 this.sendMessage('system', '🔄 Starting agent...');
                 await this.autoStartAgent();
 
-                // даем время для запуска
+                // give time for startup
                 if (this.autonomyAgent && this.autonomyAgent.isRunning()) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                 } else {
@@ -411,11 +411,11 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                 }
             }
 
-            // показываем thinking индикатор
+            // show thinking indicator
             this.showThinkingIndicator();
 
-            // выполняем задачу с таймаутом - НО НЕ ЧЕРЕЗ КОМАНДУ!
-            // Команда autonomy.runTask может вызывать handleTaskFromCommand -> handleSendMessage рекурсивно
+            // execute task with timeout - BUT NOT THROUGH COMMAND!
+            // Command autonomy.runTask can call handleTaskFromCommand -> handleSendMessage recursively
             if (this.autonomyAgent) {
                 await this.autonomyAgent.runTask(message);
             }
@@ -426,7 +426,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             this.addToHistory('system', errorMsg);
             this.sendMessage('system', errorMsg);
 
-            // если произошла ошибка, проверяем состояние агента
+            // if an error occurred, check agent status
             if (this.autonomyAgent && !this.autonomyAgent.isRunning()) {
                 this.sendMessage('system', '🔄 Agent stopped. Please try sending your message again.');
                 this.updateWebviewState();
@@ -476,7 +476,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                     this.clearMessagesFile(); // Clear messages when restarting
                 }
 
-                // Перезапускаем агент с новой конфигурацией
+                // Restart agent with new configuration
                 await this.startFreshAgent();
 
                 this.sendMessage('system', 'Autonomy agent restarted successfully with new configuration!');
@@ -548,7 +548,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     private handleNewTask() {
         this.handleClearHistory();
         this.sendMessage('system', 'Starting new task. Previous conversation cleared.');
-        // Обновляем состояние UI после очистки
+        // Update UI state after clearing
         this.updateWebviewState();
     }
 

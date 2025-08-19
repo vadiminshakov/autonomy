@@ -74,7 +74,7 @@ export class AutonomyAgent {
             this.isRunningFlag = true;
             console.log(`autonomyAgent: isRunningFlag set to true`);
 
-            // ждем сигнала готовности от процесса ПЕРЕД установкой основных обработчиков
+            // wait for ready signal from process BEFORE setting up main handlers
             const readyPromise = new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new Error('Timeout waiting for agent ready signal'));
@@ -95,7 +95,7 @@ export class AutonomyAgent {
                 const onStderr = (data: Buffer) => {
                     const error = data.toString();
                     console.error(`autonomyAgent: Received stderr while waiting for ready signal: ${error.trim()}`);
-                    // Если это критическая ошибка, завершаем ожидание
+                    // If this is a critical error, stop waiting
                     if (error.toLowerCase().includes('fatal') || error.toLowerCase().includes('panic')) {
                         clearTimeout(timeout);
                         this.process?.stdout?.removeListener('data', onStdout);
@@ -112,7 +112,7 @@ export class AutonomyAgent {
                 await readyPromise;
                 console.log(`autonomyAgent: Agent ready`);
                 
-                // Теперь устанавливаем основные обработчики после получения сигнала готовности
+                // Now set up main handlers after receiving ready signal
                 this.setupProcessHandlers();
                 console.log(`autonomyAgent: Process handlers setup complete`);
             } catch (error) {
@@ -315,7 +315,7 @@ export class AutonomyAgent {
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`Process error: ${error.message}`);
             } else {
-                // уведомляем webview об ошибке процесса
+                // notify webview about process error
                 if (this.outputCallback) {
                     this.outputCallback(`process error: ${error.message}`, 'stderr');
                 }
@@ -326,7 +326,7 @@ export class AutonomyAgent {
                 this.taskProvider.refresh();
             }
 
-            // пробуем очистить процесс
+            // try to clean up process
             this.cleanup();
         });
     }
@@ -407,7 +407,7 @@ export class AutonomyAgent {
                 if (!this.process.killed) {
                     this.process.kill('SIGTERM');
 
-                    // принудительно убиваем через 5 секунд если не завершился
+                    // force kill after 5 seconds if not terminated
                     setTimeout(() => {
                         if (this.process && !this.process.killed) {
                             console.log('autonomyAgent: Force killing process');

@@ -19,8 +19,8 @@ document.addEventListener('DOMContentLoaded', function () {
     setupEventListeners();
     loadConfig();
 
-    // не активируем элементы принудительно, ждём информации о состоянии агента
-    // запрашиваем текущее состояние агента
+    // don't activate elements forcefully, wait for agent status information
+    // request current agent status
     vscode.postMessage({ type: 'getAgentStatus' });
 
     // Request to load message history
@@ -56,7 +56,7 @@ function initializeElements() {
         sendButton: !!sendButton
     });
 
-    // по умолчанию элементы ввода отключены до получения информации о состоянии агента
+    // by default input elements are disabled until agent status information is received
     if (sendButton && messageInput) {
         sendButton.disabled = true;
         messageInput.disabled = true;
