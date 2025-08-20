@@ -36,11 +36,7 @@ export class AutonomyAgent {
     setWebviewMode(enabled: boolean) {
         this.isWebviewMode = enabled;
         if (enabled) {
-            console.log('autonomyAgent: Webview mode enabled - terminal output disabled');
-            // Hide the output channel when in webview mode
             this.outputChannel.hide();
-        } else {
-            console.log('autonomyAgent: Webview mode disabled - terminal output enabled');
         }
     }
 
@@ -58,46 +54,96 @@ export class AutonomyAgent {
                 this.outputChannel.show();
                 this.outputChannel.appendLine('Starting Autonomy agent...');
             } else {
-                // Ensure output channel is hidden in webview mode
                 this.outputChannel.hide();
             }
 
             const workingDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-            console.log(`autonomyAgent: Spawning process: ${this.config.executablePath} --headless`);
-            console.log(`autonomyAgent: Working directory: ${workingDir}`);
-            this.process = spawn(this.config.executablePath, ['--headless'], {
-                cwd: workingDir,
-                stdio: ['pipe', 'pipe', 'pipe']
-            });
+            
+            const env = {
+                ...process.env,
+                VSCODE_PID: process.pid.toString(),
+                VSCODE_WORKSPACE: workingDir,
+                AUTONOMY_PARENT: 'vscode'
+            };
+            
+            
+            try {
+                this.process = spawn(this.config.executablePath, ['--headless'], {
+                    cwd: workingDir,
+                    stdio: ['pipe', 'pipe', 'pipe'],
+                    env: env
+                });
+            } catch (spawnError) {
+                throw new Error(`Failed to spawn autonomy process: ${spawnError}`);
+            }
 
-            console.log(`autonomyAgent: Process spawned, PID: ${this.process.pid}`);
             this.isRunningFlag = true;
-            console.log(`autonomyAgent: isRunningFlag set to true`);
 
-            // wait for ready signal from process BEFORE setting up main handlers
+            if (this.process.stdin) {
+                this.process.stdin.write('\n');
+            }
+
             const readyPromise = new Promise<void>((resolve, reject) => {
+                let outputReceived = false;
+                
+                const statusInterval = setInterval(() => {
+                    if (this.process) {
+                    }
+                }, 500);
+                
                 const timeout = setTimeout(() => {
-                    reject(new Error('Timeout waiting for agent ready signal'));
-                }, 10000);
+                    clearInterval(statusInterval);
+                    reject(new Error(`Timeout waiting for agent ready signal after 5 seconds. OutputReceived: ${outputReceived}. Please check your configuration and ensure the autonomy binary is working correctly.`));
+                }, 5000);
+
+                const fallbackTimeout = setTimeout(() => {
+                    if (outputReceived && this.process && !this.process.killed) {
+                        clearTimeout(timeout);
+                        clearInterval(statusInterval);
+                        this.process?.stdout?.removeListener('data', onStdout);
+                        this.process?.stderr?.removeListener('data', onStderr);
+                        resolve();
+                    }
+                }, 3000);
 
                 const onStdout = (data: Buffer) => {
                     const output = data.toString();
-                    console.log(`autonomyAgent: Received stdout while waiting for ready signal: ${output.trim()}`);
-                    if (output.includes('Autonomy agent is ready')) {
+                    outputReceived = true;
+                    
+                    const lowerOutput = output.toLowerCase();
+                    
+                    if (lowerOutput.includes('autonomy agent is ready') || 
+                        lowerOutput.includes('ready') || 
+                        lowerOutput.includes('listening') ||
+                        lowerOutput.includes('started') ||
+                        lowerOutput.includes('enter your task') ||
+                        lowerOutput.includes('what would you like me to help with')) {
                         clearTimeout(timeout);
+                        clearTimeout(fallbackTimeout);
+                        clearInterval(statusInterval);
                         this.process?.stdout?.removeListener('data', onStdout);
                         this.process?.stderr?.removeListener('data', onStderr);
-                        console.log(`autonomyAgent: Ready signal received`);
                         resolve();
                     }
                 };
 
                 const onStderr = (data: Buffer) => {
                     const error = data.toString();
-                    console.error(`autonomyAgent: Received stderr while waiting for ready signal: ${error.trim()}`);
-                    // If this is a critical error, stop waiting
-                    if (error.toLowerCase().includes('fatal') || error.toLowerCase().includes('panic')) {
+                    outputReceived = true;
+                    
+                    const lowerError = error.toLowerCase();
+                    
+                    if (lowerError.includes('fatal') || 
+                        lowerError.includes('panic') ||
+                        lowerError.includes('error: invalid api key') ||
+                        lowerError.includes('invalid api key') ||
+                        lowerError.includes('config not found') ||
+                        lowerError.includes('failed to connect') ||
+                        lowerError.includes('no such file') ||
+                        lowerError.includes('permission denied')) {
                         clearTimeout(timeout);
+                        clearTimeout(fallbackTimeout);
+                        clearInterval(statusInterval);
                         this.process?.stdout?.removeListener('data', onStdout);
                         this.process?.stderr?.removeListener('data', onStderr);
                         reject(new Error(`Agent startup failed: ${error.trim()}`));
@@ -110,13 +156,9 @@ export class AutonomyAgent {
 
             try {
                 await readyPromise;
-                console.log(`autonomyAgent: Agent ready`);
                 
-                // Now set up main handlers after receiving ready signal
                 this.setupProcessHandlers();
-                console.log(`autonomyAgent: Process handlers setup complete`);
             } catch (error) {
-                console.error(`autonomyAgent: Failed to start agent:`, error);
                 throw error;
             }
 
@@ -190,41 +232,30 @@ export class AutonomyAgent {
     }
 
     private async validateExecutable(): Promise<void> {
-        console.log(`autonomyAgent: Validating executable: ${this.config.executablePath}`);
-
         const fs = require('fs');
         const autonomyPath = `${process.env.HOME}/.local/bin/autonomy`;
 
-        console.log(`autonomyAgent: Checking for autonomy at: ${autonomyPath}`);
-
         try {
             if (fs.existsSync(autonomyPath) && fs.statSync(autonomyPath).isFile()) {
-                console.log(`autonomyAgent: Found autonomy executable`);
                 this.config.executablePath = autonomyPath;
                 return Promise.resolve();
             } else {
                 throw new Error(`Cannot find autonomy executable at ${autonomyPath}. Please run 'make install' in the autonomy project directory.`);
             }
         } catch (error) {
-            console.log(`autonomyAgent: Validation failed:`, error);
             return Promise.reject(error);
         }
     }
 
     private async createConfigFile(): Promise<void> {
-        console.log('autonomyAgent: Checking for global config...');
-
         const globalConfigPath = require('path').join(require('os').homedir(), '.autonomy', 'config.json');
 
         if (require('fs').existsSync(globalConfigPath)) {
-            console.log('autonomyAgent: Using global config from ~/.autonomy/config.json');
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine('Using global configuration from ~/.autonomy/config.json');
             }
             return;
         }
-
-        console.log('autonomyAgent: No global config found, creating local config...');
 
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
@@ -245,17 +276,14 @@ export class AutonomyAgent {
         try {
             const autonomyDir = vscode.Uri.joinPath(workspaceFolder.uri, '.autonomy');
             await vscode.workspace.fs.createDirectory(autonomyDir);
-            console.log('autonomyAgent: Created .autonomy directory');
 
             const configContent = JSON.stringify(config, null, 2);
             await vscode.workspace.fs.writeFile(configPath, Buffer.from(configContent, 'utf8'));
 
-            console.log(`autonomyAgent: Configuration written to ${configPath.fsPath}`);
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`Configuration written to ${configPath.fsPath}`);
             }
         } catch (error) {
-            console.error('autonomyAgent: Error creating config file:', error);
             throw new Error(`Failed to create config file: ${error}`);
         }
     }
@@ -282,25 +310,16 @@ export class AutonomyAgent {
         this.process.stderr?.on('data', (data: Buffer) => {
             const error = data.toString();
 
-            // Only log as error if it's an actual error, otherwise use info log
-            if (this.isActualError(error)) {
-                console.error(`autonomyAgent: stderr:`, error);
-            } else {
-                console.log(`autonomyAgent: info:`, error);
-            }
-
             if (!this.isWebviewMode) {
                 this.outputChannel.append(`ERROR: ${error}`);
             }
 
-            // Only send actual errors to chat, not info/debug logs
             if (this.outputCallback && this.isActualError(error)) {
                 this.outputCallback(`ERROR: ${error}`, 'stderr');
             }
         });
 
         this.process.on('close', (code, signal) => {
-            console.log(`autonomyAgent: Process closed with code ${code}, signal ${signal}`);
             this.isRunningFlag = false;
 
             if (!this.isWebviewMode) {
@@ -309,13 +328,11 @@ export class AutonomyAgent {
         });
 
         this.process.on('error', (error) => {
-            console.error(`autonomyAgent: Process error:`, error);
             this.isRunningFlag = false;
 
             if (!this.isWebviewMode) {
                 this.outputChannel.appendLine(`Process error: ${error.message}`);
             } else {
-                // notify webview about process error
                 if (this.outputCallback) {
                     this.outputCallback(`process error: ${error.message}`, 'stderr');
                 }
@@ -326,7 +343,6 @@ export class AutonomyAgent {
                 this.taskProvider.refresh();
             }
 
-            // try to clean up process
             this.cleanup();
         });
     }
@@ -365,7 +381,6 @@ export class AutonomyAgent {
                 this.outputCallback('TASK_FAILED', 'task_status');
             }
         } else if (output.includes('Tool')) {
-            // Clean output from special Unicode characters that might cause display issues
             const cleanOutput = output.replace(/[\u00A0-\u9999<>\&]/gim, '').replace(/\uFFFD/g, '');
             const toolMatch = cleanOutput.match(/Tool (\w+)/);
             if (toolMatch && this.currentTask) {
@@ -378,7 +393,6 @@ export class AutonomyAgent {
     private isActualError(stderr: string): boolean {
         const lowerStderr = stderr.toLowerCase();
 
-        // Filter out info/debug logs that are not actual errors
         if (lowerStderr.includes('task iteration')) return false;
         if (lowerStderr.includes('=== task iteration')) return false;
         if (lowerStderr.includes('ai requested tools')) return false;
@@ -386,7 +400,6 @@ export class AutonomyAgent {
         if (lowerStderr.includes('debug:')) return false;
         if (lowerStderr.includes('log:')) return false;
 
-        // Only show actual errors, warnings, and failures
         return lowerStderr.includes('error:') ||
             lowerStderr.includes('failed') ||
             lowerStderr.includes('panic') ||
@@ -400,23 +413,18 @@ export class AutonomyAgent {
     }
 
     private cleanup(): void {
-        console.log('autonomyAgent: Cleaning up process resources');
-
         if (this.process) {
             try {
                 if (!this.process.killed) {
                     this.process.kill('SIGTERM');
 
-                    // force kill after 5 seconds if not terminated
                     setTimeout(() => {
                         if (this.process && !this.process.killed) {
-                            console.log('autonomyAgent: Force killing process');
                             this.process.kill('SIGKILL');
                         }
                     }, 5000);
                 }
             } catch (error) {
-                console.error('autonomyAgent: Error during cleanup:', error);
             }
         }
 

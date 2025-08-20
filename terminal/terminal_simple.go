@@ -43,8 +43,6 @@ func RunHeadlessWithInit() error {
 
 		// Initialize AI client on first real task
 		if !initialized {
-			fmt.Printf("Initializing AI client for task: %s\n", input)
-
 			cfg, err := config.LoadConfigFile()
 			if err != nil {
 				fmt.Printf("Error: No configuration found. %v\n", err)
@@ -73,7 +71,6 @@ func RunHeadlessWithInit() error {
 					continue
 				}
 				initialized = true
-				fmt.Printf("AI client initialized successfully\n")
 			case <-ctx.Done():
 				cancel()
 				fmt.Printf("Error: AI client initialization timed out\n")

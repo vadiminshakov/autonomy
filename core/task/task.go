@@ -29,7 +29,7 @@ type Config struct {
 func defaultConfig() Config {
 	return Config{
 		MaxIterations:        100,
-		MaxHistorySize:       80,
+		MaxHistorySize:       100,
 		AICallTimeout:        300 * time.Second,
 		ToolTimeout:          30 * time.Second,
 		MinAPIInterval:       1 * time.Second,
@@ -85,15 +85,6 @@ func (t *Task) Close() {
 	}
 }
 
-// AddUserMessage adds a user message to history
-func (t *Task) AddUserMessage(message string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.promptData.AddMessage("user", message)
-	t.trimHistoryIfNeeded()
-}
-
 // ProcessTask executes the main task loop
 func (t *Task) ProcessTask() error {
 	defer t.Close()
@@ -145,7 +136,7 @@ func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
 	t.addUserMessage(stepMessage)
 
 	// execute cycle for this step
-	maxStepIterations := 20
+	maxStepIterations := 100
 
 	for iter := 0; iter < maxStepIterations; iter++ {
 		if err := t.checkCancellation(); err != nil {
@@ -170,6 +161,7 @@ func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
 		}
 
 		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
+		t.trimHistoryIfNeeded()
 		t.resetNoToolCount()
 
 		completed, err := t.executeSequential(response.ToolCalls)
@@ -193,7 +185,9 @@ func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
 func (t *Task) stepIsComplete(content string) bool {
 	content = strings.ToLower(content)
 	completionMarkers := []string{
-		"step completed successfully",
+		"completed",
+		"done",
+		"success",
 		"task objective achieved",
 		"implementation finished",
 		"step is complete",
@@ -204,7 +198,6 @@ func (t *Task) stepIsComplete(content string) bool {
 		"moving to next step",
 		"this step is complete",
 		"objective achieved",
-		"successfully completed",
 	}
 
 	for _, marker := range completionMarkers {
@@ -241,6 +234,7 @@ func (t *Task) executeDirectTask() error {
 		}
 
 		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
+		t.trimHistoryIfNeeded()
 		t.resetNoToolCount()
 
 		completed, err := t.executeSequential(response.ToolCalls)
@@ -497,6 +491,15 @@ func (t *Task) checkContext(ctx context.Context) error {
 	}
 }
 
+// AddUserMessage adds a user message to history
+func (t *Task) AddUserMessage(message string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.promptData.AddMessage("user", message)
+	t.trimHistoryIfNeeded()
+}
+
 func (t *Task) addAssistantMessage(content string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -543,6 +546,59 @@ func (t *Task) trimHistoryIfNeeded() {
 }
 
 func (t *Task) contextCompaction(messagesToTrim int) string {
+	// Collect messages to summarize
+	var messagesToSummarize []string
+	for i := 1; i <= messagesToTrim && i < len(t.promptData.Messages); i++ {
+		msg := t.promptData.Messages[i]
+		messagesToSummarize = append(messagesToSummarize, fmt.Sprintf("[%s]: %s", msg.Role, msg.Content))
+	}
+
+	if len(messagesToSummarize) == 0 {
+		return ""
+	}
+
+	// Create summarization prompt
+	summaryPrompt := fmt.Sprintf(`Summarize the following conversation history in a concise format that preserves the most important context for an AI coding assistant:
+
+%s
+
+Create a brief summary focusing on:
+- Key decisions made
+- Files created/modified
+- Tools used and their outcomes
+- Important findings or issues discovered
+- Current state of the task
+
+Keep it under 200 words and use clear, factual language.`, strings.Join(messagesToSummarize, "\n"))
+
+	// Create a simple prompt data for summarization
+	summaryPromptData := entity.PromptData{
+		SystemPrompt: "You are a helpful assistant that creates concise summaries of conversation history.",
+		Messages: []entity.Message{
+			{Role: "user", Content: summaryPrompt},
+		},
+		Tools: []entity.ToolDefinition{}, // No tools needed for summarization
+	}
+
+	// Call AI for summarization
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	response, err := t.client.GenerateCode(ctx, summaryPromptData)
+	if err != nil {
+		// Fallback to simple extraction if AI call fails
+		return t.fallbackContextCompaction(messagesToTrim)
+	}
+
+	if response.Content == "" {
+		return t.fallbackContextCompaction(messagesToTrim)
+	}
+
+	return fmt.Sprintf("CONTEXT SUMMARY FROM PREVIOUS MESSAGES:\n%s\n\nContinue building on this work.", response.Content)
+}
+
+// fallbackContextCompaction provides the original simple context extraction as fallback
+func (t *Task) fallbackContextCompaction(messagesToTrim int) string {
 	var toolsUsed []string
 	var filesModified []string
 	seenTools := make(map[string]bool)

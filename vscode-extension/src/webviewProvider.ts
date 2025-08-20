@@ -41,9 +41,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Add webview disposal handler
         webviewView.onDidDispose(() => {
-            console.log('webviewProvider: Webview disposed, stopping autonomy agent');
             this.stopAutonomyAgent();
         });
 
@@ -109,7 +107,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
         this.autoStartEnabled = true;
         if (this._view) {
             this.autoStartAgent().catch(error => {
-                console.log('webviewProvider: Auto-start failed:', error);
             });
         }
     }
@@ -197,8 +194,13 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             this.updateWebviewState();
 
         } catch (error) {
-            console.error('webviewProvider: Failed to start agent:', error);
-            this.sendMessage('system', `❌ Failed to start agent: ${error}. Please check your configuration.`);
+            let errorMessage = `❌ Failed to start agent: ${error}`;
+            
+            if (error instanceof Error && error.message.includes('Timeout waiting for agent ready signal')) {
+                errorMessage = `❌ Failed to start agent: Timeout waiting for agent ready signal. This might be due to:\n• Invalid API key or configuration\n• Network connectivity issues\n• Missing dependencies\n\nPlease check your configuration in the Settings tab and ensure your API key is valid.`;
+            }
+            
+            this.sendMessage('system', errorMessage);
             throw error;
         }
     }
@@ -226,8 +228,13 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
             await this.startFreshAgent();
         } catch (error) {
-            console.log('webviewProvider: Auto-start failed:', error);
-            this.sendMessage('system', '⚠️ Could not start agent automatically. Please check your configuration in the Settings tab.');
+            let errorMessage = '⚠️ Could not start agent automatically. Please check your configuration in the Settings tab.';
+            
+            if (error instanceof Error && error.message.includes('Timeout waiting for agent ready signal')) {
+                errorMessage = '⚠️ Could not start agent automatically due to timeout. This might be due to:\n• Invalid API key or configuration\n• Network connectivity issues\n• Missing dependencies\n\nPlease check your configuration in the Settings tab and ensure your API key is valid.';
+            }
+            
+            this.sendMessage('system', errorMessage);
             this.updateWebviewState();
         }
     }
@@ -238,12 +245,10 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     public async cleanup() {
-        console.log('webviewProvider: Cleaning up resources');
         await this.stopAutonomyAgent();
     }
 
     public handleTaskFromCommand(task: string) {
-        console.log('webviewProvider: Received task from command:', task);
         this.handleSendMessage(task);
     }
 
@@ -379,9 +384,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleSendMessage(message: string) {
-        // Protection against multiple calls
         if (this.isProcessingMessage) {
-            console.log('webviewProvider: Already processing message, ignoring duplicate');
             return;
         }
 
@@ -580,7 +583,6 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
     private updateWebviewState() {
         const isRunning = this.autonomyAgent?.isRunning() || false;
-        console.log(`webviewProvider: Updating webview state - agentRunning: ${isRunning}, hasAgent: ${!!this.autonomyAgent}`);
 
         this._view?.webview.postMessage({
             type: 'updateState',

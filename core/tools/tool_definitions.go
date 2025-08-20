@@ -9,10 +9,10 @@ import (
 //nolint:lll,gocyclo
 func GetToolDescriptions() []entity.ToolDefinition {
 	toolDesc := map[string]string{
-		"get_project_structure": "View project directory tree in a textual form. Use before starting work to understand project layout",
+		"get_project_structure": "View project directory tree in a textual form. Use to understand project layout",
 		"read_file":             "Read file contents",
-		"write_file":            "Create or overwrite a file with provided content. ALWAYS read existing file first if modifying",
-		"lsp_edit":              "Edit file using Language Server Protocol approach with precise line-based edits. Supports multiple edits in single call. Safer than write_file for modifications",
+		"write_file":            "Create a NEW file or FULLY REPLACE an entire file ONLY when explicitly instructed. Do NOT use for partial edits. If the file exists and only changes are needed, use lsp_edit instead",
+		"lsp_edit":              "Modify EXISTING files with precise line-based edits (insert/replace/delete). Supports multiple edits in a single call. This is the DEFAULT tool for any modifications",
 
 		"execute_command":     "Run shell command in project root directory. Output will be returned",
 		"search_dir":          "Search text pattern recursively in directory",
