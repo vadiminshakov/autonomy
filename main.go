@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/vadiminshakov/autonomy/core/ai"
 	"github.com/vadiminshakov/autonomy/core/config"
@@ -28,6 +31,10 @@ func main() {
 
 func runProgram(headless bool) {
 	if headless {
+		if vscodePID := os.Getenv("VSCODE_PID"); vscodePID != "" {
+			go monitorVSCodeProcess(vscodePID)
+		}
+
 		fmt.Print("Autonomy agent is ready\n")
 
 		if err := terminal.RunHeadlessWithInit(); err != nil {
@@ -62,4 +69,30 @@ func runProgram(headless bool) {
 	if err := terminal.RunTerminal(client); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func monitorVSCodeProcess(vscodePIDStr string) {
+	vscodePID, err := strconv.Atoi(vscodePIDStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid VSCode PID: %s\n", vscodePIDStr)
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Monitoring VSCode process PID %d\n", vscodePID)
+
+	for {
+		time.Sleep(10 * time.Second)
+
+		// сheck if VSCode process is still running
+		if !isProcessRunning(vscodePID) {
+			fmt.Fprintf(os.Stderr, "VSCode process %d is no longer running, exiting autonomy\n", vscodePID)
+			os.Exit(0)
+		}
+	}
+}
+
+func isProcessRunning(pid int) bool {
+	// on Unix systems, sending signal 0 checks if process exists
+	err := syscall.Kill(pid, 0)
+	return err == nil
 }
