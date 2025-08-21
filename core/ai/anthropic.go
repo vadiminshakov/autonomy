@@ -16,21 +16,23 @@ import (
 )
 
 type AnthropicHandler struct {
-	*BaseProvider
-	client  *http.Client
-	config  config.Config
-	baseURL string
-	apiKey  string
-	modelID string
+	providerType ProviderType
+	capabilities ProviderCapabilities
+	client       *http.Client
+	config       config.Config
+	baseURL      string
+	apiKey       string
+	modelID      string
 }
 
 type AnthropicContent struct {
-	Type   string                 `json:"type"`
-	Text   string                 `json:"text,omitempty"`
-	ID     string                 `json:"id,omitempty"`
-	Name   string                 `json:"name,omitempty"`
-	Input  map[string]interface{} `json:"input,omitempty"`
-	Source *struct {
+	Type      string                 `json:"type"`
+	Text      string                 `json:"text,omitempty"`
+	ID        string                 `json:"id,omitempty"`
+	Name      string                 `json:"name,omitempty"`
+	Input     map[string]interface{} `json:"input,omitempty"`
+	ToolUseID string                 `json:"tool_use_id,omitempty"`
+	Source    *struct {
 		Type      string `json:"type"`
 		MediaType string `json:"media_type"`
 		Data      string `json:"data"`
@@ -118,15 +120,14 @@ func NewAnthropicProvider(cfg config.Config) (*AnthropicHandler, error) {
 		SystemPrompts: true,
 	}
 
-	baseProvider := NewBaseProvider(ProviderTypeAnthropic, capabilities)
-
 	modelID := cfg.Model
 	if modelID == "" {
 		modelID = "claude-3-5-sonnet-20241022"
 	}
 
 	return &AnthropicHandler{
-		BaseProvider: baseProvider,
+		providerType: ProviderTypeAnthropic,
+		capabilities: capabilities,
 		client:       &http.Client{Timeout: 120 * time.Second}, // Longer timeout for complex requests
 		config:       cfg,
 		baseURL:      baseURL,
@@ -328,8 +329,9 @@ func (h *AnthropicHandler) convertMessage(msg entity.Message) *AnthropicMessage 
 			Role: "user",
 			Content: []AnthropicContent{
 				{
-					Type: "tool_result",
-					Text: msg.Content,
+					Type:      "tool_result",
+					Text:      msg.Content,
+					ToolUseID: msg.ToolCallID,
 				},
 			},
 		}
@@ -639,4 +641,16 @@ func (h *AnthropicHandler) convertTools(tools []entity.ToolDefinition) []Anthrop
 	}
 
 	return anthropicTools
+}
+
+func (h *AnthropicHandler) validateContext(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("context cannot be nil")
+	}
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context canceled: %w", ctx.Err())
+	default:
+		return nil
+	}
 }

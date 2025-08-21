@@ -24,11 +24,7 @@ func ProvideAiClient(cfg config.Config) (AIClient, error) {
 		return NewOpenAICompatibleProvider(cfg, "OpenAI"), nil
 
 	case "openrouter":
-		if cfg.BaseURL == "" {
-			cfg.BaseURL = "https://openrouter.ai/api/v1"
-		}
-		client := NewOpenAICompatibleProvider(cfg, "OpenRouter")
-		return client, nil
+		return NewOpenAICompatibleProvider(cfg, "OpenRouter"), nil
 
 	case "groq":
 		return NewOpenAICompatibleProvider(cfg, "Groq"), nil

@@ -3,8 +3,10 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 
@@ -13,7 +15,8 @@ import (
 )
 
 type OpenAICompatibleHandler struct {
-	*BaseProvider
+	providerType ProviderType
+	capabilities ProviderCapabilities
 	client       *openai.Client
 	config       config.Config
 	providerName string
@@ -56,15 +59,14 @@ func NewOpenAICompatibleProvider(cfg config.Config, providerName string) *OpenAI
 		}
 	}
 
-	baseProvider := NewRouterProvider(providerType, capabilities, baseURL, cfg.APIKey, cfg.Model)
-
 	clientConfig := openai.DefaultConfig(cfg.APIKey)
 	if baseURL != "" {
 		clientConfig.BaseURL = baseURL
 	}
 
 	return &OpenAICompatibleHandler{
-		BaseProvider: baseProvider,
+		providerType: providerType,
+		capabilities: capabilities,
 		client:       openai.NewClientWithConfig(clientConfig),
 		config:       cfg,
 		providerName: providerName,
@@ -122,9 +124,40 @@ func (h *OpenAICompatibleHandler) generateCodeNative(ctx context.Context, prompt
 		req.ToolChoice = "auto"
 	}
 
-	resp, err := h.client.CreateChatCompletion(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("%s completion error: %w", h.providerName, err)
+	// Request diagnostics for 500 errors
+
+	// Retry logic for 500 errors
+	var resp openai.ChatCompletionResponse
+	var err error
+	maxRetries := 7
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err = h.client.CreateChatCompletion(ctx, req)
+		if err != nil {
+			var apiErr *openai.APIError
+			if errors.As(err, &apiErr) {
+				// Retry on 500 errors
+				if apiErr.HTTPStatusCode == 500 && attempt < maxRetries {
+					waitTime := time.Duration(1<<attempt) * time.Second // 1s, 2s, 4s, 8s, 16s, 32s
+					// Retry after 500 error
+					time.Sleep(waitTime)
+					continue
+				}
+
+				code := "unknown"
+				if apiErr.Code != nil {
+					code = fmt.Sprintf("%v", apiErr.Code)
+				}
+				param := "none"
+				if apiErr.Param != nil {
+					param = *apiErr.Param
+				}
+				return nil, fmt.Errorf("%s completion error: %s (code: %s, type: %s, param: %s, http_status: %d)",
+					h.providerName, apiErr.Message, code, apiErr.Type, param, apiErr.HTTPStatusCode)
+			}
+			return nil, fmt.Errorf("%s completion error: %w", h.providerName, err)
+		}
+		break // Success
 	}
 
 	if len(resp.Choices) == 0 {
@@ -162,6 +195,18 @@ func (h *OpenAICompatibleHandler) generateCodeNative(ctx context.Context, prompt
 		Content:   choice.Content,
 		ToolCalls: toolCalls,
 	}, nil
+}
+
+func (h *OpenAICompatibleHandler) validateContext(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("context cannot be nil")
+	}
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context canceled: %w", ctx.Err())
+	default:
+		return nil
+	}
 }
 
 // convertEntityMessageToOpenAI converts entity.Message to openai.ChatCompletionMessage
@@ -204,6 +249,7 @@ func (h *OpenAICompatibleHandler) convertEntityMessageToOpenAI(msg entity.Messag
 			ToolCalls: toolCalls,
 		}
 	} else if msg.ToolCallID != "" {
+		// Tool results - different handling for OpenRouter vs other providers
 		return &openai.ChatCompletionMessage{
 			Role:       openai.ChatMessageRoleTool,
 			Content:    msg.Content,
@@ -217,38 +263,10 @@ func (h *OpenAICompatibleHandler) convertEntityMessageToOpenAI(msg entity.Messag
 	}
 }
 
-func (h *OpenAICompatibleHandler) CompletePrompt(ctx context.Context, prompt string) (string, error) {
-	if err := h.validateContext(ctx); err != nil {
-		return "", err
-	}
-
-	modelInfo := h.GetModel()
-
-	req := openai.ChatCompletionRequest{
-		Model: modelInfo.ID,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleUser, Content: prompt},
-		},
-		MaxTokens:   modelInfo.MaxTokens,
-		Temperature: float32(modelInfo.Temperature),
-	}
-
-	resp, err := h.client.CreateChatCompletion(ctx, req)
-	if err != nil {
-		return "", fmt.Errorf("%s completion error: %w", h.providerName, err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("%s returned no choices", h.providerName)
-	}
-
-	return resp.Choices[0].Message.Content, nil
-}
-
 func (h *OpenAICompatibleHandler) GetModel() ModelInfo {
 	modelID := h.config.Model
 	if modelID == "" {
-		modelID = h.defaultModel
+		modelID = "gpt-4"
 	}
 
 	maxTokens := 4096
@@ -266,9 +284,9 @@ func (h *OpenAICompatibleHandler) GetModel() ModelInfo {
 		MaxTokens:            maxTokens,
 		Temperature:          temperature,
 		ContextWindow:        128000,
-		SupportsImages:       h.GetCapabilities().Images,
-		SupportsTools:        h.GetCapabilities().Tools,
-		SupportsSystemPrompt: h.GetCapabilities().SystemPrompts,
+		SupportsImages:       h.capabilities.Images,
+		SupportsTools:        h.capabilities.Tools,
+		SupportsSystemPrompt: h.capabilities.SystemPrompts,
 		Description:          fmt.Sprintf("%s model", h.providerName),
 	}
 }
