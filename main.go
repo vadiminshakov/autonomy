@@ -35,10 +35,8 @@ func runProgram(headless bool) {
 			go monitorVSCodeProcess(vscodePID)
 		}
 
-		fmt.Print("Autonomy agent is ready\n")
-
 		if err := terminal.RunHeadlessWithInit(); err != nil {
-			fmt.Printf("Error: %v\n", err)
+			log.Fatal(err)
 		}
 
 		return
@@ -74,18 +72,15 @@ func runProgram(headless bool) {
 func monitorVSCodeProcess(vscodePIDStr string) {
 	vscodePID, err := strconv.Atoi(vscodePIDStr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid VSCode PID: %s\n", vscodePIDStr)
+
 		return
 	}
-
-	fmt.Fprintf(os.Stderr, "Monitoring VSCode process PID %d\n", vscodePID)
 
 	for {
 		time.Sleep(10 * time.Second)
 
 		// сheck if VSCode process is still running
 		if !isProcessRunning(vscodePID) {
-			fmt.Fprintf(os.Stderr, "VSCode process %d is no longer running, exiting autonomy\n", vscodePID)
 			os.Exit(0)
 		}
 	}
