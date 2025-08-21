@@ -13,11 +13,6 @@ func init() {
 func AttemptCompletion(args map[string]interface{}) (string, error) {
 	result, _ := args["result"].(string)
 
-	// check required parameter
-	if result == "" {
-		return "", errors.New("parameter 'result' is required for attempt_completion")
-	}
-
 	// do not allow completion if there are recorded errors
 	state := getTaskState()
 	if len(state.Errors) > 0 {
@@ -41,5 +36,9 @@ func AttemptCompletion(args map[string]interface{}) (string, error) {
 	// Record completion in task state
 	state.SetContext("task_completed", "true")
 
-	return fmt.Sprintf("🎉 Task completed:\n\n%s\n\n✅ All requirements have been fulfilled.\nNo further action is required.", result), nil
+	if result != "" {
+		return fmt.Sprintf("Task completed:\n\n%s\n\n✅", result), nil
+	} else {
+		return "Task completed!\n\n✅", nil
+	}
 }
