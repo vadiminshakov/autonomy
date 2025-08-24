@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { spawn, ChildProcess } from 'child_process';
 import { AutonomyAgent, AutonomyConfig } from './autonomyAgent';
 import { ConfigurationManager } from './configManager';
 
@@ -68,6 +69,15 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                         break;
                     case 'getAgentStatus':
                         this.updateWebviewState();
+                        break;
+                    case 'installLocalModels':
+                        this.handleInstallLocalModels();
+                        break;
+                    case 'checkLocalStatus':
+                        this.handleCheckLocalStatus();
+                        break;
+                    case 'getLocalModels':
+                        this.handleGetLocalModels();
                         break;
                 }
             },
@@ -688,6 +698,30 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
                             <small>Controls randomness: 0.0 = deterministic, 1.0 = creative (leave empty for provider default)</small>
                         </div>
 
+                        <!-- Local Models Section -->
+                        <div class="form-group local-models-section">
+                            <label>Local Models Setup:</label>
+                            <div class="local-models-info">
+                                <p style="font-size: 12px; color: var(--text-secondary); margin: 8px 0;">
+                                    Install Ollama and recommended coding models for local AI development
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button id="install-local-models" class="btn btn-secondary" style="flex: 1;">
+                                    🚀 Install Local Models
+                                </button>
+                                <button id="check-local-status" class="btn btn-tertiary" style="flex: 0 0 auto; padding: 8px 12px;">
+                                    🔍 Check Status
+                                </button>
+                            </div>
+                            <div id="installation-progress" class="installation-progress" style="display: none;">
+                                <div class="progress-text"></div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="form-actions">
                             <button id="save-config" class="btn btn-primary">Save Configuration</button>
                             <button id="load-config" class="btn btn-secondary">Load Current</button>
@@ -699,5 +733,470 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             <script src="${scriptUri}"></script>
         </body>
         </html>`;
+    }
+
+    private async handleInstallLocalModels() {
+        try {
+            this.sendInstallationProgress('Checking Ollama installation...', 10);
+
+            // Check if Ollama is installed
+            const isOllamaInstalled = await this.checkOllamaInstalled();
+            
+            if (!isOllamaInstalled) {
+                // Check if we can install automatically or need manual intervention
+                const canAutoInstall = await this.canAutoInstallOllama();
+                
+                if (canAutoInstall) {
+                    this.sendInstallationProgress('Installing Ollama...', 20);
+                    try {
+                        await this.installOllama();
+                        this.sendInstallationProgress('Ollama installed successfully', 40);
+                    } catch (installError) {
+                        // If automatic installation fails, offer manual installation
+                        this.sendInstallationProgress('Automatic installation failed', 25);
+                        await this.handleOllamaInstallationFailure();
+                        return; // Exit early as we need manual intervention
+                    }
+                } else {
+                    // Go directly to manual installation
+                    await this.handleOllamaInstallationFailure();
+                    return;
+                }
+            } else {
+                this.sendInstallationProgress('Ollama is already installed', 30);
+            }
+
+            // Check if Ollama service is running
+            this.sendInstallationProgress('Starting Ollama service...', 50);
+            await this.ensureOllamaRunning();
+
+            // Install models
+            const models = ['gpt-oss:20b', 'gemma3:latest', 'qwen3:latest'];
+            const progressPerModel = 40 / models.length; // 40% total for models
+            let currentProgress = 60;
+
+            for (let i = 0; i < models.length; i++) {
+                const model = models[i];
+                this.sendInstallationProgress(`Installing model ${model}... (${i + 1}/${models.length})`, currentProgress);
+                
+                try {
+                    await this.installOllamaModel(model);
+                    currentProgress += progressPerModel;
+                    this.sendInstallationProgress(`Model ${model} installed successfully`, currentProgress);
+                } catch (error) {
+                    this.sendInstallationProgress(`Failed to install ${model}: ${error}`, currentProgress);
+                    // Continue with other models
+                }
+            }
+
+            // Final step - update configuration to use local
+            this.sendInstallationProgress('Updating configuration...', 95);
+            await this.updateConfigToLocal();
+
+            this.sendInstallationComplete(true, 'All local models installed successfully! 🎉');
+            
+            // Update the models dropdown with newly installed models
+            const finalInstalledModels = await this.getInstalledModels();
+            if (finalInstalledModels.length > 0) {
+                this.sendLocalModels(finalInstalledModels, true, '');
+            }
+            
+        } catch (error) {
+            this.sendInstallationComplete(false, `Installation failed: ${error}`);
+        }
+    }
+
+    private async checkOllamaInstalled(): Promise<boolean> {
+        return new Promise((resolve) => {
+            const process = spawn('which', ['ollama'], { shell: true });
+            
+            process.on('close', (code) => {
+                resolve(code === 0);
+            });
+            
+            process.on('error', () => {
+                resolve(false);
+            });
+        });
+    }
+
+    private async canAutoInstallOllama(): Promise<boolean> {
+        const platform = os.platform();
+        
+        // Windows не поддерживает автоустановку
+        if (platform === 'win32') {
+            return false;
+        }
+
+        // Проверяем наличие необходимых инструментов
+        try {
+            // Проверяем curl
+            await this.runCommand('which curl');
+            
+            // На macOS проверяем Homebrew
+            if (platform === 'darwin') {
+                try {
+                    await this.runCommand('which brew');
+                    return true; // Homebrew доступен
+                } catch (error) {
+                    // Homebrew нет, но curl есть - можем попробовать скрипт
+                    return true;
+                }
+            }
+            
+            return true; // Linux с curl
+        } catch (error) {
+            return false; // Нет curl
+        }
+    }
+
+    private async installOllama(): Promise<void> {
+        const platform = os.platform();
+        
+        switch (platform) {
+            case 'darwin':
+                return this.installOllamaMacOS();
+            case 'linux':
+                return this.installOllamaLinux();
+            case 'win32':
+                return this.installOllamaWindows();
+            default:
+                throw new Error(`Unsupported platform: ${platform}`);
+        }
+    }
+
+    private async installOllamaMacOS(): Promise<void> {
+        // Try Homebrew first (most common on macOS)
+        try {
+            await this.runCommand('brew --version');
+            this.sendInstallationProgress('Installing Ollama via Homebrew...', 25);
+            await this.runCommand('brew install ollama');
+            return;
+        } catch (error) {
+            // Homebrew not available, try direct download
+        }
+
+        // Fallback to direct installation script
+        this.sendInstallationProgress('Installing Ollama via installation script...', 25);
+        await this.runCommand('curl -fsSL https://ollama.com/install.sh | sh');
+    }
+
+    private async installOllamaLinux(): Promise<void> {
+        // Try package managers first
+        try {
+            // Check for apt (Debian/Ubuntu)
+            await this.runCommand('which apt-get');
+            this.sendInstallationProgress('Installing Ollama via apt...', 25);
+            await this.runCommand('sudo apt-get update && sudo apt-get install -y curl');
+            await this.runCommand('curl -fsSL https://ollama.com/install.sh | sh');
+            return;
+        } catch (error) {
+            // Try yum/dnf (RedHat/Fedora)
+            try {
+                await this.runCommand('which yum');
+                this.sendInstallationProgress('Installing Ollama via yum...', 25);
+                await this.runCommand('sudo yum install -y curl');
+                await this.runCommand('curl -fsSL https://ollama.com/install.sh | sh');
+                return;
+            } catch (error) {
+                // Fallback to direct script
+                this.sendInstallationProgress('Installing Ollama via installation script...', 25);
+                await this.runCommand('curl -fsSL https://ollama.com/install.sh | sh');
+            }
+        }
+    }
+
+    private async installOllamaWindows(): Promise<void> {
+        // Show helpful message for Windows users
+        vscode.window.showInformationMessage(
+            'Automatic Ollama installation is not supported on Windows. Would you like to download it manually?',
+            'Download Ollama',
+            'Cancel'
+        ).then(selection => {
+            if (selection === 'Download Ollama') {
+                vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
+            }
+        });
+        throw new Error('Please install Ollama manually from https://ollama.com');
+    }
+
+    private async runCommand(command: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const process = spawn(command, { shell: true });
+            
+            let stdout = '';
+            let stderr = '';
+            
+            process.stdout?.on('data', (data) => {
+                stdout += data.toString();
+            });
+            
+            process.stderr?.on('data', (data) => {
+                stderr += data.toString();
+            });
+            
+            process.on('close', (code) => {
+                if (code === 0) {
+                    resolve(stdout);
+                } else {
+                    reject(new Error(`Command failed with code ${code}. Stderr: ${stderr}`));
+                }
+            });
+            
+            process.on('error', (error) => {
+                reject(new Error(`Command execution failed: ${error.message}`));
+            });
+        });
+    }
+
+    private async ensureOllamaRunning(): Promise<void> {
+        // First check if Ollama is already running
+        const isAlreadyRunning = await this.checkOllamaHealth();
+        if (isAlreadyRunning) {
+            return; // Already running, nothing to do
+        }
+
+        return new Promise((resolve, reject) => {
+            // Try to start Ollama service
+            const process = spawn('ollama', ['serve'], { 
+                shell: true,
+                detached: true,
+                stdio: 'ignore'
+            });
+            
+            process.unref();
+            
+            // Give it a moment to start
+            setTimeout(() => {
+                // Check if it's responding
+                this.checkOllamaHealth().then(isHealthy => {
+                    if (isHealthy) {
+                        resolve();
+                    } else {
+                        reject(new Error('Ollama service failed to start. Please try starting it manually with "ollama serve"'));
+                    }
+                });
+            }, 3000); // Увеличиваем время ожидания до 3 секунд
+        });
+    }
+
+    private async checkOllamaHealth(): Promise<boolean> {
+        return new Promise((resolve) => {
+            const process = spawn('curl', ['-s', 'http://localhost:11434/api/tags'], { shell: true });
+            
+            process.on('close', (code) => {
+                resolve(code === 0);
+            });
+            
+            process.on('error', () => {
+                resolve(false);
+            });
+        });
+    }
+
+    private async installOllamaModel(modelName: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const process = spawn('ollama', ['pull', modelName], { shell: true });
+            
+            let output = '';
+            
+            process.stdout?.on('data', (data) => {
+                output += data.toString();
+                // Could parse download progress here if needed
+            });
+            
+            process.stderr?.on('data', (data) => {
+                output += data.toString();
+            });
+            
+            process.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`Failed to install model ${modelName}. Exit code: ${code}`));
+                }
+            });
+            
+            process.on('error', (error) => {
+                reject(new Error(`Error installing model ${modelName}: ${error.message}`));
+            });
+        });
+    }
+
+    private async updateConfigToLocal(): Promise<void> {
+        try {
+            const currentConfig = this.configManager.readGlobalConfig() || {};
+            
+            // Update to local configuration
+            currentConfig.provider = 'local'; // Use the 'local' provider
+            currentConfig.base_url = 'http://localhost:11434/v1';
+            currentConfig.api_key = 'local-api-key';
+            currentConfig.model = 'qwen3:latest'; // Default to qwen3 as it's good for coding
+            
+            await this.configManager.writeGlobalConfig(currentConfig);
+            
+            // Also update VS Code configuration for consistency
+            await vscode.workspace.getConfiguration('autonomy').update('provider', 'local', vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('autonomy').update('baseURL', 'http://localhost:11434/v1', vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('autonomy').update('model', 'qwen3:latest', vscode.ConfigurationTarget.Global);
+            
+        } catch (error) {
+            throw new Error(`Failed to update configuration: ${error}`);
+        }
+    }
+
+    private sendInstallationProgress(status: string, progress: number) {
+        this._view?.webview.postMessage({
+            type: 'installationProgress',
+            status: status,
+            progress: progress
+        });
+    }
+
+    private sendInstallationComplete(success: boolean, message: string) {
+        this._view?.webview.postMessage({
+            type: 'installationComplete',
+            success: success,
+            message: message
+        });
+    }
+
+    private async handleOllamaInstallationFailure(): Promise<void> {
+        const platform = os.platform();
+        let instructions = '';
+        let downloadUrl = 'https://ollama.com/download';
+
+        switch (platform) {
+            case 'darwin':
+                instructions = 'Automatic installation failed. Please install Ollama manually:\n\n• Via Homebrew: brew install ollama\n• Or download the app from ollama.com\n\nAfter installation, click "Try Again"';
+                break;
+            case 'linux':
+                instructions = 'Automatic installation failed. Please install Ollama manually:\n\n• Run in terminal: curl -fsSL https://ollama.com/install.sh | sh\n• Or download from ollama.com\n\nAfter installation, click "Try Again"';
+                break;
+            case 'win32':
+                instructions = 'Please download and install Ollama from ollama.com, then click "Try Again"';
+                break;
+        }
+
+        const selection = await vscode.window.showWarningMessage(
+            instructions,
+            { modal: true },
+            'Open Download Page',
+            'Try Again',
+            'Skip Installation'
+        );
+
+        switch (selection) {
+            case 'Open Download Page':
+                vscode.env.openExternal(vscode.Uri.parse(downloadUrl));
+                this.sendInstallationComplete(false, '🌐 Download page opened. Install Ollama and click "Install Local Models" again');
+                break;
+            case 'Try Again':
+                // Restart the installation process
+                setTimeout(() => this.handleInstallLocalModels(), 1000);
+                break;
+            case 'Skip Installation':
+                this.sendInstallationComplete(false, '⏭️ Ollama installation skipped. You can install it manually later');
+                break;
+            default:
+                this.sendInstallationComplete(false, '❌ Installation cancelled');
+                break;
+        }
+    }
+
+    private async handleCheckLocalStatus() {
+        try {
+            this.sendInstallationProgress('Checking local AI status...', 20);
+
+            // Check Ollama installation
+            const isOllamaInstalled = await this.checkOllamaInstalled();
+            if (!isOllamaInstalled) {
+                this.sendInstallationComplete(false, '❌ Ollama not installed. Click "Install Local Models" to get started');
+                return;
+            }
+
+            // Check Ollama service
+            this.sendInstallationProgress('Checking Ollama service...', 40);
+            const isOllamaRunning = await this.checkOllamaHealth();
+            if (!isOllamaRunning) {
+                this.sendInstallationComplete(false, '⚠️ Ollama installed but not running. Try: ollama serve');
+                return;
+            }
+
+            // Check installed models
+            this.sendInstallationProgress('Checking installed models...', 60);
+            const installedModels = await this.getInstalledModels();
+            
+            this.sendInstallationProgress('Getting model status...', 80);
+            const requiredModels = ['gpt-oss:20b', 'gemma3:latest', 'qwen3:latest'];
+            const missingModels = requiredModels.filter(model => !installedModels.includes(model));
+
+            let statusMessage = '✅ Ollama is running';
+            if (installedModels.length > 0) {
+                statusMessage += `\n📦 Installed models: ${installedModels.join(', ')}`;
+            }
+            if (missingModels.length > 0) {
+                statusMessage += `\n🔍 Missing models: ${missingModels.join(', ')}`;
+            }
+
+            this.sendInstallationComplete(true, statusMessage);
+
+            // Also update the models dropdown if we're on local provider
+            if (installedModels.length > 0) {
+                this.sendLocalModels(installedModels, true, '');
+            }
+
+        } catch (error) {
+            this.sendInstallationComplete(false, `Status check failed: ${error}`);
+        }
+    }
+
+    private async getInstalledModels(): Promise<string[]> {
+        try {
+            const output = await this.runCommand('ollama list');
+            // Parse output to get model names
+            const lines = output.split('\n').slice(1); // Skip header
+            const models = lines
+                .filter(line => line.trim())
+                .map(line => line.split(/\s+/)[0]) // First column is model name
+                .filter(name => name && name !== 'NAME'); // Filter out header remnants
+            
+            return models;
+        } catch (error) {
+            return [];
+        }
+    }
+
+    private async handleGetLocalModels() {
+        try {
+            // Check if Ollama is installed and running
+            const isOllamaInstalled = await this.checkOllamaInstalled();
+            if (!isOllamaInstalled) {
+                this.sendLocalModels([], false, 'Ollama not installed');
+                return;
+            }
+
+            const isOllamaRunning = await this.checkOllamaHealth();
+            if (!isOllamaRunning) {
+                this.sendLocalModels([], false, 'Ollama not running - try: ollama serve');
+                return;
+            }
+
+            // Get installed models
+            const installedModels = await this.getInstalledModels();
+            this.sendLocalModels(installedModels, true, installedModels.length > 0 ? '' : 'No models installed');
+
+        } catch (error) {
+            this.sendLocalModels([], false, `Failed to get models: ${error}`);
+        }
+    }
+
+    private sendLocalModels(models: string[], success: boolean, message: string) {
+        this._view?.webview.postMessage({
+            type: 'localModels',
+            models: models,
+            success: success,
+            message: message
+        });
     }
 }

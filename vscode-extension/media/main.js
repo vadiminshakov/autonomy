@@ -5,7 +5,8 @@ const vscode = acquireVsCodeApi();
 let clearHistoryBtn, newTaskBtn, sendButton;
 let messageInput, messagesContainer;
 let configForm, providerSelect, apiKeyInput, modelInput, modelSelect, toggleModelInputBtn, executablePathInput, baseUrlInput, maxTokensInput, temperatureInput;
-let saveConfigBtn, loadConfigBtn;
+let saveConfigBtn, loadConfigBtn, installLocalModelsBtn, checkLocalStatusBtn;
+let installationProgress, progressText, progressFill;
 
 
 let agentRunning = false;
@@ -47,6 +48,11 @@ function initializeElements() {
     temperatureInput = document.getElementById('temperature');
     saveConfigBtn = document.getElementById('save-config');
     loadConfigBtn = document.getElementById('load-config');
+    installLocalModelsBtn = document.getElementById('install-local-models');
+    checkLocalStatusBtn = document.getElementById('check-local-status');
+    installationProgress = document.getElementById('installation-progress');
+    progressText = installationProgress?.querySelector('.progress-text');
+    progressFill = installationProgress?.querySelector('.progress-fill');
 
     // by default input elements are disabled until agent status information is received
     if (sendButton && messageInput) {
@@ -93,6 +99,17 @@ function setupEventListeners() {
 
 
     modelSelect.addEventListener('change', function () {
+        if (this.value === '__refresh__') {
+            // Handle refresh option
+            if (providerSelect.value === 'local') {
+                this.innerHTML = '<option value="">Loading models...</option>';
+                vscode.postMessage({
+                    type: 'getLocalModels'
+                });
+            }
+            return;
+        }
+        
         if (this.value) {
             modelInput.value = this.value;
         }
@@ -108,6 +125,14 @@ function setupEventListeners() {
     if (temperatureInput) temperatureInput.addEventListener('input', checkConfigChanges);
 
     toggleModelInputBtn.addEventListener('click', toggleModelInput);
+    
+    if (installLocalModelsBtn) {
+        installLocalModelsBtn.addEventListener('click', installLocalModels);
+    }
+    
+    if (checkLocalStatusBtn) {
+        checkLocalStatusBtn.addEventListener('click', checkLocalStatus);
+    }
 }
 
 function sendMessage() {
@@ -373,17 +398,34 @@ function updateModelOptions(provider) {
             models: ['google/gemini-2.5-pro', 'x-ai/grok-4', 'moonshotai/kimi-k2', 'qwen/qwen3-coder', 'deepseek/deepseek-chat-v3-0324']
         },
         'local': {
-            placeholder: 'e.g., deepseek-coder-v2:16b',
-            default: 'deepseek-coder-v2:16b',
-            models: ['deepseek-coder-v2:16b', 'llama4', 'llama3.2:latest', 'qwen2.5-coder:7b-instruct',]
+            placeholder: 'Loading models from Ollama...',
+            default: '',
+            models: [] // Will be populated dynamically
         }
     };
 
     const config = modelConfigs[provider] || modelConfigs['openai'];
     modelInput.placeholder = config.placeholder;
 
-
+    // Clear dropdown first
     modelSelect.innerHTML = '<option value="">Select a model...</option>';
+    
+    if (provider === 'local') {
+        // Show loading state
+        const loadingOption = document.createElement('option');
+        loadingOption.value = '';
+        loadingOption.textContent = 'Loading models...';
+        loadingOption.disabled = true;
+        modelSelect.appendChild(loadingOption);
+        
+        // Request local models from Ollama
+        vscode.postMessage({
+            type: 'getLocalModels'
+        });
+        return; // Exit early, updateLocalModels will handle the rest
+    }
+    
+    // For non-local providers, populate immediately
     config.models.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
@@ -391,7 +433,7 @@ function updateModelOptions(provider) {
         modelSelect.appendChild(option);
     });
 
-
+    // Set default model
     if (!modelInput.value || shouldUpdateModel(provider, modelInput.value)) {
         modelInput.value = config.default;
         modelSelect.value = config.default;
@@ -494,6 +536,18 @@ window.addEventListener('message', event => {
         case 'removeThinking':
             removeThinkingIndicator(message.messageId);
             break;
+            
+        case 'installationProgress':
+            updateInstallationProgress(message.status, message.progress);
+            break;
+            
+        case 'installationComplete':
+            completeInstallation(message.success, message.message);
+            break;
+            
+        case 'localModels':
+            updateLocalModels(message.models, message.success, message.message);
+            break;
     }
 });
 
@@ -522,6 +576,142 @@ function updateSaveButtonState() {
     } else {
         saveConfigBtn.classList.add('btn-save-disabled');
         saveConfigBtn.disabled = true;
+    }
+}
+
+function installLocalModels() {
+    // Disable button and show progress
+    installLocalModelsBtn.disabled = true;
+    installLocalModelsBtn.textContent = 'Installing...';
+    installationProgress.style.display = 'block';
+    
+    // Send message to extension to start installation
+    vscode.postMessage({
+        type: 'installLocalModels'
+    });
+}
+
+function updateInstallationProgress(status, progress) {
+    if (progressText) {
+        progressText.textContent = status;
+    }
+    
+    if (progressFill) {
+        progressFill.style.width = progress + '%';
+        
+        // Add animation for active installation
+        if (progress > 0 && progress < 100) {
+            progressFill.classList.add('animated');
+        } else {
+            progressFill.classList.remove('animated');
+        }
+    }
+}
+
+function checkLocalStatus() {
+    // Send message to extension to check local status
+    vscode.postMessage({
+        type: 'checkLocalStatus'
+    });
+}
+
+function updateLocalModels(models, success, message) {
+    // Only update if we're currently on local provider
+    if (providerSelect.value !== 'local') {
+        return;
+    }
+
+    // Clear the dropdown
+    modelSelect.innerHTML = '<option value="">Select a model...</option>';
+    
+    if (!success) {
+        // Show error state
+        modelInput.placeholder = message || 'Failed to load models';
+        
+        const errorOption = document.createElement('option');
+        errorOption.value = '';
+        errorOption.textContent = message || 'Error loading models';
+        errorOption.disabled = true;
+        errorOption.style.color = 'var(--accent-error)';
+        modelSelect.appendChild(errorOption);
+        
+        // Add refresh option
+        const refreshOption = document.createElement('option');
+        refreshOption.value = '__refresh__';
+        refreshOption.textContent = '🔄 Refresh models';
+        refreshOption.style.color = 'var(--accent-primary)';
+        modelSelect.appendChild(refreshOption);
+        
+        return;
+    }
+
+    if (models.length === 0) {
+        modelInput.placeholder = 'No models installed - click "Install Local Models"';
+        
+        const noModelsOption = document.createElement('option');
+        noModelsOption.value = '';
+        noModelsOption.textContent = 'No models installed';
+        noModelsOption.disabled = true;
+        noModelsOption.style.color = 'var(--accent-warning)';
+        modelSelect.appendChild(noModelsOption);
+        
+        return;
+    }
+
+    // Successfully loaded models
+    modelInput.placeholder = 'e.g., ' + (models[0] || 'model:latest');
+    
+    // Add models to dropdown
+    models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        modelSelect.appendChild(option);
+    });
+    
+    // Add refresh option
+    const refreshOption = document.createElement('option');
+    refreshOption.value = '__refresh__';
+    refreshOption.textContent = '🔄 Refresh models';
+    refreshOption.style.color = 'var(--accent-primary)';
+    modelSelect.appendChild(refreshOption);
+
+    // Set default model if none is selected
+    if (!modelInput.value && models.length > 0) {
+        // Prefer qwen3 or any model with 'qwen' or 'coder' in the name for coding
+        const codingModels = models.filter(m => 
+            m.includes('qwen') || 
+            m.includes('coder') || 
+            m.includes('code')
+        );
+        
+        const defaultModel = codingModels.length > 0 ? codingModels[0] : models[0];
+        modelInput.value = defaultModel;
+        modelSelect.value = defaultModel;
+    }
+}
+
+function completeInstallation(success, message) {
+    // Reset button state
+    installLocalModelsBtn.disabled = false;
+    installLocalModelsBtn.textContent = success ? '✅ Install Local Models' : '🚀 Install Local Models';
+    
+    // Show final message
+    if (progressText) {
+        progressText.textContent = message;
+    }
+    
+    if (progressFill) {
+        progressFill.style.width = success ? '100%' : '0%';
+        progressFill.classList.remove('animated');
+    }
+    
+    // Hide progress after delay if successful
+    if (success) {
+        setTimeout(() => {
+            installationProgress.style.display = 'none';
+            installLocalModelsBtn.textContent = '🚀 Install Local Models';
+        }, 3000);
     }
 }
 
