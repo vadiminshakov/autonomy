@@ -153,50 +153,64 @@ body {
     scroll-behavior: smooth;
 }
 
-/* Clean message bubbles */
+/* Fluid message flow */
 .message {
-    padding: 12px 16px;
-    margin: 8px 0;
-    border-radius: 8px;
-    max-width: 85%;
+    padding: 8px 0;
+    margin: 4px 0;
     word-wrap: break-word;
     font-size: 13px;
-    line-height: 1.5;
+    line-height: 1.6;
     position: relative;
-    box-shadow: var(--shadow-sm);
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    max-width: 100%;
 }
 
 .message.user {
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-    color: white;
-    margin-left: auto;
-    border-bottom-right-radius: 4px;
+    color: var(--accent-primary);
+    font-weight: 500;
+    margin-left: 16px;
+    border-left: 3px solid var(--accent-primary);
+    padding-left: 12px;
+    margin-bottom: 16px;
 }
 
 .message.agent {
-    background: var(--surface-primary);
     color: var(--text-primary);
-    border: 1px solid var(--border-default);
-    margin-right: auto;
-    border-bottom-left-radius: 4px;
     font-family: 'JetBrains Mono', monospace;
     white-space: pre-wrap;
     word-break: break-word;
+    margin-bottom: 16px;
+}
+
+.message.user::before {
+    content: "You: ";
+    color: var(--accent-primary);
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.message.agent::before {
+    content: "Agent: ";
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 12px;
+}
+
+.message.system::before {
+    content: "System: ";
+    color: var(--accent-warning);
+    font-weight: 500;
+    font-size: 12px;
 }
 
 /* Special styling for tool calls */
-.message.agent:has(.tool-call) {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-    font-size: 12px;
-    border: 1px solid var(--border-default);
-}
-
 .tool-call {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     color: var(--text-secondary);
-    background: var(--bg-secondary);
+    background: var(--bg-tertiary);
     padding: 4px 8px;
     border-radius: 4px;
     border: 1px solid var(--border-default);
@@ -205,22 +219,21 @@ body {
 }
 
 .message.system {
-    background: var(--surface-secondary);
     color: var(--accent-warning);
-    border: 1px solid var(--border-muted);
-    margin: 8px auto;
-    text-align: center;
     font-weight: 500;
     font-size: 12px;
-    border-radius: 16px;
+    font-style: italic;
+    margin: 8px 0;
+    opacity: 0.8;
 }
 
 .message-timestamp {
-    font-size: 11px;
-    opacity: 0.6;
-    margin-top: 6px;
+    font-size: 10px;
+    opacity: 0.5;
+    margin-top: 4px;
     color: var(--text-muted);
     font-weight: 300;
+    margin-left: 2px;
 }
 
 /* Modern input area */
@@ -466,13 +479,11 @@ body {
 
 /* Thinking indicator */
 .message.thinking {
-    background: var(--surface-secondary);
     color: var(--text-secondary);
-    border: 1px solid var(--border-muted);
-    margin-right: auto;
     font-style: italic;
     font-weight: 300;
     animation: pulse 2s ease-in-out infinite;
+    margin: 8px 0;
 }
 
 @keyframes pulse {
@@ -523,18 +534,16 @@ body {
 
 /* Subtle animations */
 .message {
-    animation: slideIn 0.2s ease-out;
+    animation: fadeIn 0.15s ease-out;
 }
 
-@keyframes slideIn {
+@keyframes fadeIn {
     from {
         opacity: 0;
-        transform: translateY(10px);
     }
 
     to {
         opacity: 1;
-        transform: translateY(0);
     }
 }
 

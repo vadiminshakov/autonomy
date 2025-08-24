@@ -28,7 +28,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function initializeElements() {
-    console.log('webview: Initializing elements...');
 
     clearHistoryBtn = document.getElementById('clear-history');
     newTaskBtn = document.getElementById('new-task');
@@ -48,13 +47,6 @@ function initializeElements() {
     temperatureInput = document.getElementById('temperature');
     saveConfigBtn = document.getElementById('save-config');
     loadConfigBtn = document.getElementById('load-config');
-
-    console.log('webview: Elements found:', {
-        maxTokensInput: !!maxTokensInput,
-        temperatureInput: !!temperatureInput,
-        saveConfigBtn: !!saveConfigBtn,
-        sendButton: !!sendButton
-    });
 
     // by default input elements are disabled until agent status information is received
     if (sendButton && messageInput) {
@@ -238,19 +230,16 @@ function clearMessages() {
 }
 
 function updateAgentStatus(running) {
-    console.log('webview: updateAgentStatus called with running:', running);
     agentRunning = running;
 
     if (running) {
         sendButton.disabled = false;
         messageInput.disabled = false;
         messageInput.placeholder = "Type your task here... (e.g., 'Add error handling to the getUserData function')";
-        console.log('webview: Agent running - enabled input elements');
     } else {
         sendButton.disabled = true;
         messageInput.disabled = true;
         messageInput.placeholder = 'Agent not running. Check configuration or restart.';
-        console.log('webview: Agent not running - disabled input elements');
     }
 
     setLoading(sendButton, false);
@@ -374,9 +363,9 @@ function updateModelOptions(provider) {
             models: ['o4', 'o3', 'gpt-4.1', 'gpt-4o']
         },
         'anthropic': {
-            placeholder: 'e.g., claude-4-opus, claude-4-sonnet-20250514',
-            default: 'claude-4-opus',
-            models: ['claude-4-opus', 'claude-4-sonnet-20250514', 'claude-3-7-sonnet']
+            placeholder: 'e.g., claude-opus-4-1-20250805, claude-sonnet-4-20250514, claude-3-7-sonnet-20250219',
+            default: 'claude-3-5-sonnet-20241022',
+            models: ['claude-opus-4-1-20250805', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219']
         },
         'openrouter': {
             placeholder: 'e.g., google/gemini-2.5-pro, x-ai/grok-4',
@@ -474,7 +463,6 @@ window.addEventListener('message', event => {
             break;
 
         case 'updateState':
-            console.log('webview: Received updateState message:', message.state);
             updateAgentStatus(message.state.agentRunning);
             break;
 

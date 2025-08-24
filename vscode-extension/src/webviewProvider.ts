@@ -195,11 +195,11 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
 
         } catch (error) {
             let errorMessage = `❌ Failed to start agent: ${error}`;
-            
+
             if (error instanceof Error && error.message.includes('Timeout waiting for agent ready signal')) {
                 errorMessage = `❌ Failed to start agent: Timeout waiting for agent ready signal. This might be due to:\n• Invalid API key or configuration\n• Network connectivity issues\n• Missing dependencies\n\nPlease check your configuration in the Settings tab and ensure your API key is valid.`;
             }
-            
+
             this.sendMessage('system', errorMessage);
             throw error;
         }
@@ -210,7 +210,7 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             try {
                 await this.autonomyAgent.stop();
             } catch (error) {
-                console.error('webviewProvider: Error stopping agent:', error);
+                // Error stopping agent - continue silently
             }
             this.autonomyAgent = undefined;
             this.updateWebviewState();
@@ -229,11 +229,11 @@ export class AutonomyWebviewProvider implements vscode.WebviewViewProvider {
             await this.startFreshAgent();
         } catch (error) {
             let errorMessage = '⚠️ Could not start agent automatically. Please check your configuration in the Settings tab.';
-            
+
             if (error instanceof Error && error.message.includes('Timeout waiting for agent ready signal')) {
                 errorMessage = '⚠️ Could not start agent automatically due to timeout. This might be due to:\n• Invalid API key or configuration\n• Network connectivity issues\n• Missing dependencies\n\nPlease check your configuration in the Settings tab and ensure your API key is valid.';
             }
-            
+
             this.sendMessage('system', errorMessage);
             this.updateWebviewState();
         }

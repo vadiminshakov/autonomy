@@ -17,7 +17,7 @@ func TestLspEdit_SimpleEdit(t *testing.T) {
 import "fmt"
 
 func main() {
-	fmt.Println("hello")
+	// hello
 }`
 
 	if err := os.WriteFile(testFile, []byte(originalContent), 0644); err != nil {
@@ -31,7 +31,7 @@ func main() {
 			map[string]interface{}{
 				"start_line":  6,
 				"end_line":    6,
-				"new_text":    `	fmt.Println("world")`,
+				"new_text":    `	// world`,
 				"description": "change hello to world",
 			},
 		},
@@ -57,7 +57,7 @@ func main() {
 import "fmt"
 
 func main() {
-	fmt.Println("world")
+	// world
 }`
 
 	if string(modifiedContent) != expectedContent {
@@ -74,9 +74,9 @@ func TestLspEdit_MultipleEdits(t *testing.T) {
 import "fmt"
 
 func main() {
-	fmt.Println("first")
-	fmt.Println("second")
-	fmt.Println("third")
+	// first
+	// second
+	// third
 }`
 
 	if err := os.WriteFile(testFile, []byte(originalContent), 0644); err != nil {
@@ -90,12 +90,12 @@ func main() {
 			map[string]interface{}{
 				"start_line": 6,
 				"end_line":   6,
-				"new_text":   `	fmt.Println("FIRST")`,
+				"new_text":   `	// FIRST`,
 			},
 			map[string]interface{}{
 				"start_line": 8,
 				"end_line":   8,
-				"new_text":   `	fmt.Println("THIRD")`,
+				"new_text":   `	// THIRD`,
 			},
 		},
 	}
@@ -120,9 +120,9 @@ func main() {
 import "fmt"
 
 func main() {
-	fmt.Println("FIRST")
-	fmt.Println("second")
-	fmt.Println("THIRD")
+	// FIRST
+	// second
+	// THIRD
 }`
 
 	if string(modifiedContent) != expectedContent {
@@ -156,7 +156,7 @@ func main() {
 			map[string]interface{}{
 				"start_line": 4,
 				"end_line":   4, // replace "// empty" line
-				"new_text":   `	fmt.Println("hello world")`,
+				"new_text":   `	// hello world`,
 			},
 		},
 	}
@@ -180,8 +180,8 @@ func main() {
 		t.Error("Expected import statement to be added")
 	}
 
-	if !strings.Contains(string(modifiedContent), `fmt.Println("hello world")`) {
-		t.Error("Expected println statement to be added")
+	if !strings.Contains(string(modifiedContent), `// hello world`) {
+		t.Error("Expected comment to be added")
 	}
 }
 

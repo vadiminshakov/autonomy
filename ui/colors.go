@@ -18,6 +18,7 @@ const (
 	colorPurple = "\033[35m"
 	colorCyan   = "\033[36m"
 	colorWhite  = "\033[37m"
+	colorGray   = "\033[90m"
 
 	colorBrightRed    = "\033[91m"
 	colorBrightGreen  = "\033[92m"
@@ -43,14 +44,16 @@ func Blue(text string) string   { return Colorize(text, colorBlue) }
 func Purple(text string) string { return Colorize(text, colorPurple) }
 func Cyan(text string) string   { return Colorize(text, colorCyan) }
 func White(text string) string  { return Colorize(text, colorWhite) }
+func Gray(text string) string   { return Colorize(text, colorGray) }
 
 func BrightRed(text string) string    { return Colorize(text, colorBrightRed) }
 func BrightGreen(text string) string  { return Colorize(text, colorBrightGreen) }
 func BrightYellow(text string) string { return Colorize(text, colorBrightYellow) }
 func BrightBlue(text string) string   { return Colorize(text, colorBrightBlue) }
 func BrightPurple(text string) string { return Colorize(text, colorBrightPurple) }
-func BrightCyan(text string) string   { return Colorize(text, colorBrightCyan) }
+func BrightCyan(text string) string   { return Colorize(text, colorCyan) }
 func BrightWhite(text string) string  { return Colorize(text, colorBrightWhite) }
+func BrightGray(text string) string   { return Colorize(text, colorGray) }
 
 func Bold(text string) string { return Colorize(text, colorBold) }
 func Dim(text string) string  { return Colorize(text, colorDim) }

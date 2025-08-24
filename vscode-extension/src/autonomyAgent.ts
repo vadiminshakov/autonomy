@@ -79,10 +79,6 @@ export class AutonomyAgent {
 
             this.isRunningFlag = true;
 
-            if (this.process.stdin) {
-                this.process.stdin.write('\n');
-            }
-
             const readyPromise = new Promise<void>((resolve, reject) => {
                 let outputReceived = false;
                 
@@ -132,6 +128,22 @@ export class AutonomyAgent {
                     outputReceived = true;
                     
                     const lowerError = error.toLowerCase();
+                    
+                    // Check if stderr contains ready signal too
+                    if (lowerError.includes('autonomy agent is ready') || 
+                        lowerError.includes('ready') || 
+                        lowerError.includes('listening') ||
+                        lowerError.includes('started') ||
+                        lowerError.includes('enter your task') ||
+                        lowerError.includes('what would you like me to help with')) {
+                        clearTimeout(timeout);
+                        clearTimeout(fallbackTimeout);
+                        clearInterval(statusInterval);
+                        this.process?.stdout?.removeListener('data', onStdout);
+                        this.process?.stderr?.removeListener('data', onStderr);
+                        resolve();
+                        return;
+                    }
                     
                     if (lowerError.includes('fatal') || 
                         lowerError.includes('panic') ||
@@ -230,6 +242,7 @@ export class AutonomyAgent {
             throw error;
         }
     }
+
 
     private async validateExecutable(): Promise<void> {
         const fs = require('fs');

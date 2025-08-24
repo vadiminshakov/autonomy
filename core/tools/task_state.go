@@ -24,6 +24,7 @@ type TaskState struct {
 	ExecutedCommands []string               `json:"executed_commands"`
 	Errors           []string               `json:"errors"`
 	LastToolResult   string                 `json:"last_tool_result"`
+	LastToolSuccess  bool                   `json:"last_tool_success"`
 	Context          map[string]interface{} `json:"context"`
 }
 
@@ -85,6 +86,7 @@ func getTaskState() *TaskState {
 			ReadFiles:        []string{},
 			ExecutedCommands: []string{},
 			Errors:           []string{},
+			LastToolSuccess:  true,
 			Context:          make(map[string]interface{}),
 		}
 	})
@@ -99,9 +101,11 @@ func (ts *TaskState) RecordToolUse(toolName string, success bool, result string)
 
 	ts.CompletedTools[toolName]++
 	ts.LastToolResult = result
+	ts.LastToolSuccess = success
 
 	if !success {
-		ts.Errors = append(ts.Errors, fmt.Sprintf("%s failed: %s", toolName, result))
+		errorMsg := fmt.Sprintf("%s failed: %s", toolName, result)
+		ts.Errors = append(ts.Errors, errorMsg)
 	}
 }
 
@@ -185,6 +189,7 @@ func (ts *TaskState) Reset() {
 	ts.ExecutedCommands = []string{}
 	ts.Errors = []string{}
 	ts.LastToolResult = ""
+	ts.LastToolSuccess = true
 	ts.Context = make(map[string]interface{})
 }
 
@@ -193,4 +198,11 @@ func (ts *TaskState) ClearErrors() {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	ts.Errors = []string{}
+}
+
+// LastToolSucceeded returns true if the last tool execution was successful
+func (ts *TaskState) LastToolSucceeded() bool {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.LastToolSuccess
 }

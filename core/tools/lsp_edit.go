@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/vadiminshakov/autonomy/ui"
 )
 
 func init() {
@@ -115,7 +113,6 @@ func lspEdit(args map[string]interface{}) (string, error) {
 	}
 
 	// apply edits in reverse order (top to bottom) to avoid messing up line numbers
-	fmt.Printf("%s Applying %d edit(s) to %s\n", ui.Tool("LSP_EDIT"), len(edits), ui.BrightWhite(pathVal))
 
 	// sort edits by line numbers in reverse order
 	sortedEdits := make([]EditRequest, len(edits))
@@ -179,7 +176,6 @@ func lspEdit(args map[string]interface{}) (string, error) {
 	getTaskState().RecordFileModified(pathVal)
 
 	result := fmt.Sprintf("applied %d edit(s) to %s (%d lines changed)", len(edits), pathVal, totalChanges)
-	fmt.Printf("%s %s\n", ui.Success("SUCCESS"), result)
 
 	return result, nil
 }
@@ -261,25 +257,7 @@ func logEdit(edit EditRequest, editNum, totalEdits int) {
 		desc = fmt.Sprintf("lines %d-%d", edit.StartLine, edit.EndLine)
 	}
 
-	newLineCount := len(strings.Split(edit.NewText, "\n"))
-	if edit.NewText == "" {
-		newLineCount = 0
-	}
-
-	oldLineCount := edit.EndLine - edit.StartLine + 1
-	delta := newLineCount - oldLineCount
-
-	var deltaStr string
-	if delta > 0 {
-		deltaStr = ui.BrightGreen(fmt.Sprintf("+%d", delta))
-	} else if delta < 0 {
-		deltaStr = ui.BrightRed(fmt.Sprintf("%d", delta))
-	} else {
-		deltaStr = ui.Dim("0")
-	}
-
-	fmt.Printf("%s Edit %d/%d: %s (%s lines)\n",
-		ui.Info("EDIT"), editNum, totalEdits, ui.BrightWhite(desc), deltaStr)
+	// Edit info
 }
 
 // applyEdit applies one edit operation to array of lines

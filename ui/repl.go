@@ -178,7 +178,7 @@ func ShowTaskStart(task string) {
 
 func ShowTaskComplete() {
 	fmt.Println(Dim(strings.Repeat("─", 50)))
-	fmt.Println(BrightGreen("Task completed!"))
+	fmt.Println(BrightGreen("✅ Task completed successfully!"))
 	fmt.Println()
 }
 

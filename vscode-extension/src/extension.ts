@@ -9,25 +9,20 @@ let taskProvider: AutonomyTaskProvider;
 let webviewProvider: AutonomyWebviewProvider;
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('🚀 Autonomy extension is now active');
 
     const configManager = new ConfigurationManager();
     taskProvider = new AutonomyTaskProvider();
     webviewProvider = new AutonomyWebviewProvider(context.extensionUri, configManager);
 
-    console.log('Starting quick autonomy check...');
     // Run check in background without blocking extension
     quickCheckAutonomy(context).then((available) => {
         if (available) {
-            console.log('Autonomy is available, webview can auto-start');
             webviewProvider.enableAutoStart();
         } else {
-            console.log('Autonomy not immediately available, but webview will still try to auto-start');
             // enable auto-start anyway, let webview handle it itself
             webviewProvider.enableAutoStart();
         }
     }).catch(error => {
-        console.error('Error in quickCheckAutonomy:', error);
         // don't block auto-start even if check failed
         webviewProvider.enableAutoStart();
     });
@@ -37,15 +32,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(AutonomyWebviewProvider.viewType, webviewProvider)
     );
-    console.log('✅ Webview provider registered');
 
     const startCommand = vscode.commands.registerCommand('autonomy.start', async (fromWebview?: boolean) => {
-        console.log('extension: autonomy.start command called - delegating to webview');
 
         // Now all agent management happens through webview
         // This command remains for backward compatibility
         if (fromWebview) {
-            console.log('extension: Start request from webview - handled internally');
             return;
         }
 
@@ -117,7 +109,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     const configWatcher = vscode.workspace.createFileSystemWatcher(globalConfigPath);
     configWatcher.onDidChange(async () => {
-        console.log('Global config changed, restarting autonomy agent...');
         if (autonomyAgent && autonomyAgent.isRunning()) {
             await autonomyAgent.stop();
             webviewProvider.onAgentStopped(); // Clear messages file
@@ -132,20 +123,16 @@ export function activate(context: vscode.ExtensionContext) {
                 webviewProvider.setAutonomyAgent(autonomyAgent);
                 vscode.window.showInformationMessage('Autonomy agent restarted due to config changes');
             } catch (error) {
-                console.error('Failed to restart autonomy agent:', error);
                 vscode.window.showErrorMessage(`Failed to restart Autonomy agent: ${error}`);
             }
         }
     });
 
     context.subscriptions.push(configWatcher);
-
-    console.log('✅ Autonomy extension activation completed');
 }
 
 // quick check for autonomy presence without installation
 async function quickCheckAutonomy(context: vscode.ExtensionContext): Promise<boolean> {
-    console.log('quickCheckAutonomy: Quick check for autonomy...');
     const { exec } = require('child_process');
 
     return new Promise((resolve) => {
@@ -158,10 +145,8 @@ async function quickCheckAutonomy(context: vscode.ExtensionContext): Promise<boo
             shell: true
         }, (error: any, stdout: string) => {
             if (error) {
-                console.log('quickCheckAutonomy: Autonomy not immediately available');
                 resolve(false);
             } else {
-                console.log('quickCheckAutonomy: Autonomy found:', stdout.trim());
                 resolve(true);
             }
         });
@@ -177,14 +162,12 @@ async function quickCheckAutonomy(context: vscode.ExtensionContext): Promise<boo
 }
 
 async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
-    console.log('checkAndInstallAutonomy: Starting installation check...');
     const { exec } = require('child_process');
     const fs = require('fs');
     const path = require('path');
     const os = require('os');
 
     function checkIfAutonomyExists(): Promise<boolean> {
-        console.log('checkIfAutonomyExists: Checking autonomy --version...');
         return new Promise((resolve) => {
             const checkOptions = {
                 timeout: 5000, // 5 second timeout
@@ -199,14 +182,8 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
 
             const child = exec('autonomy --version', checkOptions, (error: any, stdout: string, stderr: string) => {
                 if (error) {
-                    if (error.code === 'ENOENT' || error.signal === 'SIGTERM') {
-                        console.log('checkIfAutonomyExists: Autonomy not found in PATH');
-                    } else {
-                        console.log('checkIfAutonomyExists: Command failed:', error.message);
-                    }
                     resolve(false);
                 } else {
-                    console.log('checkIfAutonomyExists: Autonomy already installed:', stdout.trim());
                     resolve(true);
                 }
             });
@@ -214,7 +191,6 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
             // Force terminate after 5 seconds if command hangs
             setTimeout(() => {
                 if (!child.killed) {
-                    console.log('checkIfAutonomyExists: Timeout reached, killing process');
                     child.kill('SIGTERM');
                     resolve(false);
                 }
@@ -230,8 +206,6 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
             const attemptInstall = () => {
                 attempt++;
                 const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 30000); // Max 30 seconds
-
-                console.log(`Installing Autonomy CLI... (attempt ${attempt})`);
 
                 // Send installation status to webview
                 if (webviewProvider) {
@@ -255,9 +229,6 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                 exec(installCommand, execOptions, async (error: any, stdout: string, stderr: string) => {
                     if (error) {
                         const errorMsg = `Installation attempt ${attempt} failed: ${error.message}`;
-                        console.error(errorMsg);
-                        console.error('stdout:', stdout);
-                        console.error('stderr:', stderr);
 
                         // Send error to webview chat
                         if (webviewProvider) {
@@ -269,14 +240,12 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
 
                         if (attempt < maxAttempts) {
                             const retryMsg = `Retrying in ${backoffMs / 1000} seconds... (attempt ${attempt + 1})`;
-                            console.log(retryMsg);
                             if (webviewProvider) {
                                 webviewProvider.sendAgentOutput(retryMsg, 'stdout');
                             }
                             setTimeout(attemptInstall, backoffMs);
                         } else {
                             const failMsg = 'Autonomy CLI auto-installation failed after maximum attempts. Please install manually.';
-                            console.error(failMsg);
                             if (webviewProvider) {
                                 webviewProvider.sendAgentOutput(`❌ ${failMsg}`, 'stderr');
                                 webviewProvider.sendAgentOutput('Installation instructions: https://github.com/vadiminshakov/autonomy#installation', 'stderr');
@@ -293,14 +262,12 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                         exec('autonomy --version', execOptions, (verifyError: any, verifyStdout: string) => {
                             if (verifyError) {
                                 const verifyMsg = `Installation completed but verification failed: ${verifyError.message}`;
-                                console.error(verifyMsg);
                                 if (webviewProvider) {
                                     webviewProvider.sendAgentOutput(`⚠️ ${verifyMsg}`, 'stderr');
                                 }
 
                                 if (attempt < maxAttempts) {
                                     const retryMsg = `Retrying verification in ${backoffMs / 1000} seconds...`;
-                                    console.log(retryMsg);
                                     if (webviewProvider) {
                                         webviewProvider.sendAgentOutput(retryMsg, 'stdout');
                                     }
@@ -310,7 +277,6 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                                 }
                             } else {
                                 const successMsg = `✅ Autonomy CLI installed successfully! Version: ${verifyStdout.trim()}`;
-                                console.log(successMsg);
                                 if (webviewProvider) {
                                     webviewProvider.sendAgentOutput(successMsg, 'stdout');
                                 }
@@ -346,23 +312,19 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                 };
 
                 fs.writeFileSync(configFile, JSON.stringify(exampleConfig, null, 2));
-                console.log('Example config created at:', configFile);
             } catch (error) {
-                console.log('Could not create config file:', error);
+                // Could not create config file
             }
         }
     }
 
     try {
-        console.log('checkAndInstallAutonomy: Checking if Autonomy exists...');
         const autonomyExists = await checkIfAutonomyExists();
-        console.log('checkAndInstallAutonomy: Autonomy exists:', autonomyExists);
 
         if (!autonomyExists) {
             const autoInstall = true; // Always auto-install since we don't use VSCode settings
 
             if (autoInstall) {
-                console.log('checkAndInstallAutonomy: Autonomy not found, installing automatically...');
                 vscode.window.showInformationMessage('Installing Autonomy CLI automatically...');
 
                 const installSuccess = await installAutonomy();
@@ -380,7 +342,6 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                     });
                 }
             } else {
-                console.log('checkAndInstallAutonomy: Auto-install disabled, showing manual instructions');
                 vscode.window.showWarningMessage(
                     'Autonomy CLI is not installed. Auto-install is disabled.',
                     'Install Manually',
@@ -394,30 +355,26 @@ async function checkAndInstallAutonomy(context: vscode.ExtensionContext) {
                 });
             }
         } else {
-            console.log('checkAndInstallAutonomy: Autonomy already installed');
             createConfigExample();
         }
     } catch (error) {
-        console.error('Installation check failed:', error);
+        // Installation check failed
     }
 }
 
 export function deactivate() {
-    console.log('extension: Deactivating Autonomy extension');
 
     // Stop global agent
     if (autonomyAgent) {
-        console.log('extension: Stopping global autonomy agent');
         autonomyAgent.stop().catch(error => {
-            console.error('extension: Error stopping global agent:', error);
+            // Error stopping global agent
         });
     }
 
     // Stop webview agent
     if (webviewProvider) {
-        console.log('extension: Stopping webview autonomy agent');
         webviewProvider.cleanup().catch(error => {
-            console.error('extension: Error cleaning up webview:', error);
+            // Error cleaning up webview
         });
     }
 }

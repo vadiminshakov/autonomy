@@ -44,7 +44,7 @@ func Execute(name string, args map[string]any) (string, error) {
 	if name != "get_task_state" &&
 		name != "check_tool_usage" && name != "reset_task_state" {
 		success := err == nil
-		getTaskState().RecordToolUse(name, success, result)
+		GetTaskState().RecordToolUse(name, success, result)
 	}
 
 	return result, err
@@ -58,7 +58,7 @@ func validateToolArgs(toolName string, args map[string]any) error {
 		if _, ok := args["path"]; !ok {
 			return fmt.Errorf("tool %s requires 'path' parameter. example: {\"path\": \"file.txt\"}", toolName)
 		}
-	case "execute_command", "interrupt_command":
+	case "bash", "interrupt_command":
 		if _, ok := args["command"]; !ok {
 			return fmt.Errorf("tool %s requires 'command' parameter. example: {\"command\": \"go run main.go\"}", toolName)
 		}

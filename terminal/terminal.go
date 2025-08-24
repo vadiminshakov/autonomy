@@ -66,6 +66,9 @@ func RunTerminal(client ai.AIClient) error {
 }
 
 func RunHeadless(client ai.AIClient) error {
+	// Send ready signal for webview
+	fmt.Println("🤖 Autonomy agent is ready! Enter your programming tasks or commands.")
+
 	// Use a channel to handle stdin reading non-blocking
 	inputChan := make(chan string)
 	go func() {
@@ -101,7 +104,7 @@ func RunHeadless(client ai.AIClient) error {
 		t.Close()
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Task processing error: %v\n", err)
+			// Task processing error - continue silently
 		}
 	}
 

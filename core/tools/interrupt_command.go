@@ -20,11 +20,15 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("parameter 'command' must be a non-empty string")
 	}
 
-	if isDangerousCommand(cmdStr) {
-		return "", fmt.Errorf("execution of command '%s' is blocked for security reasons", cmdStr)
+	// Basic security check - prevent dangerous commands
+	dangerous := []string{"rm -rf", "format", "del /", "shutdown", "reboot", "mkfs"}
+	for _, danger := range dangerous {
+		if strings.Contains(strings.ToLower(cmdStr), danger) {
+			return "", fmt.Errorf("execution of command '%s' is blocked for security reasons", cmdStr)
+		}
 	}
 
-	fmt.Printf("running command with interrupt capability: %s\n", cmdStr)
+	// Running command with interrupt capability
 
 	// Create context with shorter timeout for initial execution
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -57,11 +61,10 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 
 	case <-ctx.Done():
 		// Command exceeded timeout, interrupt it
-		fmt.Println("command exceeded timeout, interrupting...")
 
 		// Try graceful termination first
 		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			fmt.Printf("failed to send SIGTERM: %v\n", err)
+			// Failed to send SIGTERM
 		}
 
 		// Wait a bit for graceful shutdown
@@ -70,7 +73,7 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 		// Force kill if still running
 		if cmd.Process != nil && cmd.ProcessState == nil {
 			if err := cmd.Process.Kill(); err != nil {
-				fmt.Printf("failed to kill process: %v\n", err)
+				// Failed to kill process
 			}
 		}
 

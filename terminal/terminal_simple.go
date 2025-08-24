@@ -20,7 +20,7 @@ func RunHeadlessSimple() error {
 		if input == "exit" || input == "quit" {
 			break
 		}
-		fmt.Printf("Task: %s\n", input)
+
 	}
 	return nil
 }
@@ -28,6 +28,11 @@ func RunHeadlessSimple() error {
 func RunHeadlessWithInit() error {
 	var client ai.AIClient
 	var initialized = false
+	var initError error
+
+	// Send ready signal immediately for VS Code
+	fmt.Println("Autonomy agent is ready! Enter your programming tasks or commands.")
+	fmt.Fprintf(os.Stderr, "Autonomy agent is ready! Enter your programming tasks or commands.\n")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -42,15 +47,16 @@ func RunHeadlessWithInit() error {
 		}
 
 		// Initialize AI client on first real task
-		if !initialized {
+		if !initialized {			
 			cfg, err := config.LoadConfigFile()
 			if err != nil {
-				fmt.Printf("Error: No configuration found. %v\n", err)
+				fmt.Printf("❌ Configuration error: %v\n", err)
+				initError = err
 				continue
 			}
 
 			// Create AI client with timeout
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			initChan := make(chan error, 1)
 
 			go func() {
@@ -67,15 +73,24 @@ func RunHeadlessWithInit() error {
 			case err := <-initChan:
 				cancel()
 				if err != nil {
-					fmt.Printf("Error: Failed to create AI client: %v\n", err)
+					fmt.Printf("❌ Failed to initialize AI client: %v\n", err)
+					initError = err
 					continue
 				}
 				initialized = true
+				initError = nil
 			case <-ctx.Done():
 				cancel()
-				fmt.Printf("Error: AI client initialization timed out\n")
+				fmt.Println("❌ Agent initialization timeout - check your API configuration")
+				initError = fmt.Errorf("initialization timeout")
 				continue
 			}
+		}
+
+		// If we had init errors but user keeps trying, show the error
+		if initError != nil {
+			fmt.Printf("❌ Agent not initialized: %v\n", initError)
+			continue
 		}
 
 		// Process the task
@@ -87,9 +102,7 @@ func RunHeadlessWithInit() error {
 		t.Close()
 
 		if err != nil {
-			fmt.Printf("Task failed: %v\n", err)
-		} else {
-			fmt.Printf("Task completed\n")
+			fmt.Printf("❌ Task failed: %v\n", err)
 		}
 	}
 
