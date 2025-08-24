@@ -152,7 +152,7 @@ func InteractiveSetup() (Config, error) {
 				"deepseek/deepseek-chat-v3-0324",
 			}
 		case "anthropic":
-			modelOptions = []string{"claude-4-opus", "claude-4-sonnet-20250514", "claude-3-7-sonnet"}
+			modelOptions = []string{"claude-opus-4-1-20250805", "claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219"}
 		}
 
 		modelOptions = append(modelOptions, "<enter custom model>")
