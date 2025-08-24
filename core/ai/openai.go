@@ -144,16 +144,8 @@ func (h *OpenAICompatibleHandler) generateCodeNative(ctx context.Context, prompt
 					continue
 				}
 
-				code := "unknown"
-				if apiErr.Code != nil {
-					code = fmt.Sprintf("%v", apiErr.Code)
-				}
-				param := "none"
-				if apiErr.Param != nil {
-					param = *apiErr.Param
-				}
-				return nil, fmt.Errorf("%s completion error: %s (code: %s, type: %s, param: %s, http_status: %d)",
-					h.providerName, apiErr.Message, code, apiErr.Type, param, apiErr.HTTPStatusCode)
+				return nil, fmt.Errorf("%s returned error: http code %d - %s",
+					h.providerName, apiErr.HTTPStatusCode, apiErr.Message)
 			}
 			return nil, fmt.Errorf("%s completion error: %w", h.providerName, err)
 		}
