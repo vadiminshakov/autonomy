@@ -45,7 +45,7 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 
 	var output strings.Builder
 	var outputMu sync.RWMutex
-	
+
 	cmd.Stdout = &safeWriter{builder: &output, mu: &outputMu}
 	cmd.Stderr = &safeWriter{builder: &output, mu: &outputMu}
 
@@ -69,9 +69,9 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 
 	case <-ctx.Done():
 		if cmd.Process != nil {
-			cmd.Process.Signal(syscall.SIGTERM) //nolint:staticcheck
+			_ = cmd.Process.Signal(syscall.SIGTERM)
 			time.Sleep(2 * time.Second)
-			cmd.Process.Kill() //nolint:staticcheck
+			_ = cmd.Process.Kill()
 		}
 
 		outputMu.RLock()
@@ -88,6 +88,7 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 	}
 }
 
+//nolint:gocyclo
 func analyzeCommandOutput(output, command string) string {
 	if output == "" {
 		return "no output captured before interruption"
@@ -98,7 +99,7 @@ func analyzeCommandOutput(output, command string) string {
 		return "no output captured before interruption"
 	}
 
-	analysis := []string{}
+	var analysis []string
 
 	if strings.Contains(strings.ToLower(output), "error") {
 		analysis = append(analysis, "• errors detected in output")
