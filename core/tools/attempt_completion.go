@@ -12,28 +12,28 @@ func init() {
 // AttemptCompletion marks the task as completed and returns a final message.
 func AttemptCompletion(args map[string]interface{}) (string, error) {
 	result, _ := args["result"].(string)
-
-	// do not allow completion if there are recorded errors
 	state := getTaskState()
-	if len(state.Errors) > 0 {
-		// show last 3 errors for context
-		errCount := len(state.Errors)
-		showErrors := 3
-		if errCount < showErrors {
-			showErrors = errCount
-		}
 
-		errMsg := fmt.Sprintf("cannot complete task: %d unresolved errors\n", errCount)
-		errMsg += "Recent errors:\n"
-		for i := errCount - showErrors; i < errCount; i++ {
-			errMsg += fmt.Sprintf("  %d. %s\n", i+1, state.Errors[i])
-		}
-		errMsg += "\nHint: Fix the errors or use 'reset_task_state' to clear error history if they are resolved"
-
-		return "", errors.New(errMsg)
+	// only check if the last tool was successful - ignore historical errors
+	if !state.LastToolSucceeded() {
+		return "", errors.New("cannot complete task: last operation failed")
 	}
 
-	// Record completion in task state
+	// check if we're in a decomposed task execution
+	hasTask, exists := state.GetContext("has_decomposed_task")
+	isDecomposedTask := exists && hasTask == true
+
+	// for decomposed tasks, only set step completion flag, don't terminate
+	if isDecomposedTask {
+		state.SetContext("step_completed", "true")
+		if result != "" {
+			return fmt.Sprintf("Step completed:\n%s\n✅", result), nil
+		} else {
+			return "Step completed!\n✅", nil
+		}
+	}
+
+	// for direct tasks, mark as fully completed
 	state.SetContext("task_completed", "true")
 
 	if result != "" {
