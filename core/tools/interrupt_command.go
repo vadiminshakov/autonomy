@@ -5,22 +5,32 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
+
+type safeWriter struct {
+	builder *strings.Builder
+	mu      *sync.RWMutex
+}
+
+func (sw *safeWriter) Write(p []byte) (n int, err error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	return sw.builder.Write(p)
+}
 
 func init() {
 	Register("interrupt_command", InterruptCommand)
 }
 
-// InterruptCommand interrupts a long-running command and analyzes its output
 func InterruptCommand(args map[string]interface{}) (string, error) {
 	cmdStr, ok := args["command"].(string)
 	if !ok || strings.TrimSpace(cmdStr) == "" {
 		return "", fmt.Errorf("parameter 'command' must be a non-empty string")
 	}
 
-	// Basic security check - prevent dangerous commands
 	dangerous := []string{"rm -rf", "format", "del /", "shutdown", "reboot", "mkfs"}
 	for _, danger := range dangerous {
 		if strings.Contains(strings.ToLower(cmdStr), danger) {
@@ -28,25 +38,21 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 		}
 	}
 
-	// Running command with interrupt capability
-
-	// Create context with shorter timeout for initial execution
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
 
-	// Capture output in real-time
 	var output strings.Builder
-	cmd.Stdout = &output
-	cmd.Stderr = &output
+	var outputMu sync.RWMutex
+	
+	cmd.Stdout = &safeWriter{builder: &output, mu: &outputMu}
+	cmd.Stderr = &safeWriter{builder: &output, mu: &outputMu}
 
-	// Start command
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("failed to start command: %v", err)
 	}
 
-	// Wait for completion or timeout
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Wait()
@@ -54,47 +60,34 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 
 	select {
 	case err := <-done:
-		// Command completed normally
 		state := getTaskState()
 		state.RecordCommandExecuted(cmdStr)
-		return output.String(), err
+		outputMu.RLock()
+		result := output.String()
+		outputMu.RUnlock()
+		return result, err
 
 	case <-ctx.Done():
-		// Command exceeded timeout, interrupt it
-
-		// Try graceful termination first
-		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil { //nolint:staticcheck // Intentionally ignoring error
-			// Failed to send SIGTERM
+		if cmd.Process != nil {
+			cmd.Process.Signal(syscall.SIGTERM) //nolint:staticcheck
+			time.Sleep(2 * time.Second)
+			cmd.Process.Kill() //nolint:staticcheck
 		}
 
-		// Wait a bit for graceful shutdown
-		time.Sleep(2 * time.Second)
+		outputMu.RLock()
+		outputStr := output.String()
+		outputMu.RUnlock()
 
-		// Force kill if still running
-		if cmd.Process != nil && cmd.ProcessState == nil {
-			if err := cmd.Process.Kill(); err != nil { //nolint:staticcheck // Intentionally ignoring error
-				// Failed to kill process
-			}
-		}
-
-		// Record interrupted command
 		state := getTaskState()
 		state.RecordCommandExecuted(cmdStr + " [INTERRUPTED]")
 		state.SetContext("last_interrupted_command", cmdStr)
-		state.SetContext("last_command_output", output.String())
+		state.SetContext("last_command_output", outputStr)
 
-		// Analyze the output to understand what happened
-		analysis := analyzeCommandOutput(output.String(), cmdStr)
-
-		msg := "command was interrupted after 10 seconds. output analysis:\n\n%s\n\n" +
-			"partial output:\n%s"
-		return fmt.Sprintf(msg, analysis, output.String()), nil
+		analysis := analyzeCommandOutput(outputStr, cmdStr)
+		return fmt.Sprintf("command was interrupted after 10 seconds. output analysis:\n\n%s\n\npartial output:\n%s", analysis, outputStr), nil
 	}
 }
 
-// analyzeCommandOutput analyzes command output to understand execution progress
-//
-//nolint:gocyclo
 func analyzeCommandOutput(output, command string) string {
 	if output == "" {
 		return "no output captured before interruption"
@@ -107,7 +100,6 @@ func analyzeCommandOutput(output, command string) string {
 
 	analysis := []string{}
 
-	// Check for common patterns
 	if strings.Contains(strings.ToLower(output), "error") {
 		analysis = append(analysis, "• errors detected in output")
 	}
@@ -136,7 +128,6 @@ func analyzeCommandOutput(output, command string) string {
 		analysis = append(analysis, "• command was running tests")
 	}
 
-	// Analyze last few lines for current status
 	lastLines := lines
 	if len(lines) > 5 {
 		lastLines = lines[len(lines)-5:]
@@ -149,7 +140,6 @@ func analyzeCommandOutput(output, command string) string {
 		}
 	}
 
-	// Estimate progress if possible
 	if strings.Contains(command, "go run") || strings.Contains(command, "go build") {
 		analysis = append(analysis, "• this appears to be a Go command that may need more time to complete")
 	}
