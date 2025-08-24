@@ -26,12 +26,13 @@ type AnthropicHandler struct {
 }
 
 type AnthropicContent struct {
-	Type      string                 `json:"type"`
-	Text      string                 `json:"text,omitempty"`
-	ID        string                 `json:"id,omitempty"`
-	Name      string                 `json:"name,omitempty"`
-	Input     map[string]interface{} `json:"input,omitempty"`
-	ToolUseID string                 `json:"tool_use_id,omitempty"`
+	Type      string                  `json:"type"`
+	Text      string                  `json:"text,omitempty"`
+	Content   string                  `json:"content,omitempty"`
+	ID        string                  `json:"id,omitempty"`
+	Name      string                  `json:"name,omitempty"`
+	Input     *map[string]interface{} `json:"input,omitempty"`
+	ToolUseID string                  `json:"tool_use_id,omitempty"`
 	Source    *struct {
 		Type      string `json:"type"`
 		MediaType string `json:"media_type"`
@@ -259,10 +260,9 @@ func (h *AnthropicHandler) sendStreamRequest(ctx context.Context, reqData Anthro
 
 			var event AnthropicStreamEvent
 			if err := json.Unmarshal([]byte(data), &event); err != nil {
-				continue // Skip malformed events
+				continue
 			}
 
-			// Handle different event types
 			switch event.Type {
 			case "content_block_delta":
 				if event.Delta != nil && event.Delta.Text != "" {
@@ -270,7 +270,6 @@ func (h *AnthropicHandler) sendStreamRequest(ctx context.Context, reqData Anthro
 				}
 			case "message_delta":
 				if event.Delta != nil && event.Delta.StopReason != "" {
-					// Message completed
 					return nil
 				}
 			}
@@ -287,7 +286,7 @@ func (h *AnthropicHandler) convertMessage(msg entity.Message) *AnthropicMessage 
 			Role: msg.Role,
 		}
 
-		// Handle text content
+		// handle text content
 		if msg.Content != "" {
 			anthropicMsg.Content = append(anthropicMsg.Content, AnthropicContent{
 				Type: "text",
@@ -295,30 +294,35 @@ func (h *AnthropicHandler) convertMessage(msg entity.Message) *AnthropicMessage 
 			})
 		}
 
-		// Handle tool calls (for assistant messages)
+		// handle tool calls
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
 			for _, toolCall := range msg.ToolCalls {
-				// Parse arguments
-				var input map[string]interface{}
+				// parse arguments - ensure input is always a valid object, never nil
+				input := make(map[string]interface{})
 				if toolCall.Arguments != "" {
 					if err := json.Unmarshal([]byte(toolCall.Arguments), &input); err != nil {
-						// Skip malformed tool call arguments
+						// skip malformed tool call arguments
 						continue
 					}
 				} else if toolCall.Args != nil {
 					input = toolCall.Args
 				}
+				// if both Arguments and Args are empty/nil, input remains as empty map
 
-				// Create tool use content using AnthropicContent with proper structure
+				// create tool use content using AnthropicContent with proper structure
 				toolContent := AnthropicContent{
 					Type:  "tool_use",
 					ID:    toolCall.ID,
 					Name:  toolCall.Function.Name,
-					Input: input,
+					Input: &input,
 				}
 
 				anthropicMsg.Content = append(anthropicMsg.Content, toolContent)
 			}
+		}
+
+		if len(anthropicMsg.Content) == 0 {
+			return nil
 		}
 
 		return &anthropicMsg
@@ -330,7 +334,7 @@ func (h *AnthropicHandler) convertMessage(msg entity.Message) *AnthropicMessage 
 			Content: []AnthropicContent{
 				{
 					Type:      "tool_result",
-					Text:      msg.Content,
+					Content:   msg.Content,
 					ToolUseID: msg.ToolCallID,
 				},
 			},
@@ -342,7 +346,6 @@ func (h *AnthropicHandler) convertMessage(msg entity.Message) *AnthropicMessage 
 }
 
 func (h *AnthropicHandler) sendRequest(ctx context.Context, reqData AnthropicRequest) (*entity.AIResponse, error) {
-	// Validate request before sending
 	if err := h.validateRequest(reqData); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
@@ -408,7 +411,7 @@ func (h *AnthropicHandler) parseError(statusCode int, body []byte) error {
 		}
 	}
 
-	// Fallback for unparseable errors
+	// fallback for unparseable errors
 	switch statusCode {
 	case 400:
 		return fmt.Errorf("bad request (400): %s", string(body))
@@ -441,8 +444,12 @@ func (h *AnthropicHandler) convertResponse(resp AnthropicResponse) (*entity.AIRe
 		case "text":
 			textParts = append(textParts, content.Text)
 		case "tool_use":
-			// Convert tool use to ToolCall
-			argsBytes, _ := json.Marshal(content.Input)
+			// convert tool use to ToolCall
+			var input map[string]interface{}
+			if content.Input != nil {
+				input = *content.Input
+			}
+			argsBytes, _ := json.Marshal(input)
 
 			toolCall := entity.NewToolCall(
 				content.ID,
@@ -473,7 +480,7 @@ func (h *AnthropicHandler) CompletePrompt(ctx context.Context, prompt string) (s
 		return "", fmt.Errorf("prompt cannot be empty")
 	}
 
-	// Simple text completion with proper temperature
+	// simple text completion with proper temperature
 	temperature := 0.0
 	if h.config.Temperature >= 0 {
 		temperature = h.config.Temperature
@@ -575,7 +582,7 @@ func (h *AnthropicHandler) validateRequest(req AnthropicRequest) error {
 		return fmt.Errorf("messages array cannot be empty")
 	}
 
-	// Validate message structure
+	// validate message structure
 	for i, msg := range req.Messages {
 		if msg.Role == "" {
 			return fmt.Errorf("message %d: role is required", i)
@@ -584,10 +591,23 @@ func (h *AnthropicHandler) validateRequest(req AnthropicRequest) error {
 			return fmt.Errorf("message %d: content cannot be empty", i)
 		}
 
-		// Validate content blocks
+		// validate content blocks
 		for j, content := range msg.Content {
 			if content.Type == "" {
 				return fmt.Errorf("message %d, content %d: type is required", i, j)
+			}
+			
+			// additional validation for tool_use content
+			if content.Type == "tool_use" {
+				if content.ID == "" {
+					return fmt.Errorf("message %d, content %d: tool_use ID is required", i, j)
+				}
+				if content.Name == "" {
+					return fmt.Errorf("message %d, content %d: tool_use name is required", i, j)
+				}
+				if content.Input == nil {
+					return fmt.Errorf("message %d, content %d: tool_use input is required (cannot be nil)", i, j)
+				}
 			}
 		}
 	}
