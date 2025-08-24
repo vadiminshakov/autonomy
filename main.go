@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/vadiminshakov/autonomy/core/ai"
@@ -86,7 +85,5 @@ func monitorVSCodeProcess(vscodePIDStr string) {
 }
 
 func isProcessRunning(pid int) bool {
-	// on Unix systems, sending signal 0 checks if process exists
-	err := syscall.Kill(pid, 0)
-	return err == nil
+	return checkProcessWithKill(pid)
 }
