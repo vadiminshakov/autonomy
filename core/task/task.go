@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -105,15 +106,7 @@ func (t *Task) executeDecomposedTasks() error {
 
 	clearDecomposedTask()
 
-	fmt.Print(ui.Dim(decomposedTask.GetStepSummary()))
-	fmt.Printf("Executing decomposed task with %d steps...\n", len(decomposedTask.Steps))
-
 	for i, step := range decomposedTask.Steps {
-		fmt.Printf("\n=== Step %d/%d: %s ===\n", i+1, len(decomposedTask.Steps), step.Description)
-		if step.Reason != "" {
-			fmt.Printf("    %s\n", ui.Dim("Reason: "+step.Reason))
-		}
-
 		step.Status = "in_progress"
 
 		if err := t.executeTaskStep(step); err != nil {
@@ -122,20 +115,15 @@ func (t *Task) executeDecomposedTasks() error {
 		}
 
 		step.Status = "completed"
-		fmt.Printf("✓ Step %d completed\n", i+1)
 	}
 
-	fmt.Println("\n🎉 All steps completed successfully!")
 	return nil
 }
 
-// executeTaskStep executes one task step with full AI-tools cycle
 func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
-	// add step description as user message
 	stepMessage := fmt.Sprintf("Execute this step: %s\n\nReason: %s", step.Description, step.Reason)
 	t.addUserMessage(stepMessage)
 
-	// execute cycle for this step
 	maxStepIterations := 100
 
 	for iter := 0; iter < maxStepIterations; iter++ {
@@ -148,11 +136,8 @@ func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
 			return fmt.Errorf("AI call failed: %v", err)
 		}
 
-		if response.Content != "" {
-			fmt.Printf("%s\n", NormalizeOutput(response.Content))
-		}
-
 		if len(response.ToolCalls) == 0 {
+			t.displayReasoning(response.Content)
 			t.addAssistantMessage(response.Content)
 			if shouldAbort := t.handleNoTools(); shouldAbort {
 				return fmt.Errorf("step execution timed out - no tools used")
@@ -181,7 +166,6 @@ func (t *Task) executeTaskStep(step decomposition.TaskStep) error {
 	return fmt.Errorf("step execution timed out after %d iterations", maxStepIterations)
 }
 
-// stepIsComplete checks if AI indicated that the step is completed
 func (t *Task) stepIsComplete(content string) bool {
 	content = strings.ToLower(content)
 	completionMarkers := []string{
@@ -209,7 +193,6 @@ func (t *Task) stepIsComplete(content string) bool {
 	return false
 }
 
-// executeDirectTask executes task directly without decomposition
 func (t *Task) executeDirectTask() error {
 	for iter := 0; iter < t.config.MaxIterations; iter++ {
 		if err := t.checkCancellation(); err != nil {
@@ -221,11 +204,8 @@ func (t *Task) executeDirectTask() error {
 			return fmt.Errorf("AI call failed: %v", err)
 		}
 
-		if response.Content != "" {
-			fmt.Printf("%s\n", NormalizeOutput(response.Content))
-		}
-
 		if len(response.ToolCalls) == 0 {
+			t.displayReasoning(response.Content)
 			t.addAssistantMessage(response.Content)
 			if shouldAbort := t.handleNoTools(); shouldAbort {
 				return fmt.Errorf("task execution timed out")
@@ -233,6 +213,7 @@ func (t *Task) executeDirectTask() error {
 			continue
 		}
 
+		t.displayReasoning(response.Content)
 		t.promptData.AddAssistantMessageWithTools(response.Content, response.ToolCalls)
 		t.trimHistoryIfNeeded()
 		t.resetNoToolCount()
@@ -270,10 +251,6 @@ func (t *Task) callAi() (*entity.AIResponse, error) {
 }
 
 func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
-	if len(calls) > 1 {
-		fmt.Printf("executing %d tools sequentially...\n", len(calls))
-	}
-
 	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
 	defer cancel()
 
@@ -282,14 +259,12 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 			return false, err
 		}
 
-		// execute tool
 		result, err := t.exec(ctx, call)
-
-		// handle result
 		t.handleToolResult(call, result, err)
 
-		// check completion
-		if call.Name == "attempt_completion" && err == nil {
+		// only complete on attempt_completion if we're executing direct task
+		// for decomposed tasks, attempt_completion should not stop execution
+		if call.Name == "attempt_completion" && err == nil && !hasDecomposedTask() {
 			return true, nil
 		}
 	}
@@ -298,7 +273,6 @@ func (t *Task) executeSequential(calls []entity.ToolCall) (bool, error) {
 }
 
 func (t *Task) exec(ctx context.Context, call entity.ToolCall) (string, error) {
-	// Check if tool is available before execution
 	availableTools := tools.List()
 	toolExists := false
 	for _, tool := range availableTools {
@@ -355,45 +329,80 @@ func (t *Task) getToolTimeout(toolName string) time.Duration {
 func (t *Task) handleToolResult(call entity.ToolCall, result string, err error) {
 	if err != nil {
 		fmt.Println(ui.Error(fmt.Sprintf("Error running %s: %v", call.Name, err)))
-		if result != "" && !isSilentTool(call.Name) {
-			fmt.Printf("%s\n", ui.Dim("Result: "+result))
-		}
 		t.promptData.AddToolResponse(call.ID, fmt.Sprintf("Error: %v. Result: %s", err, result))
 		return
 	}
+
+	// save original result for history
+	originalResult := result
 
 	if isSilentTool(call.Name) {
 		summary := silentToolSummary(call.Name, call.Args, result)
 		fmt.Println(ui.Success("✓ "+call.Name) + summary)
 	} else {
-		fmt.Println(ui.Success("✓ " + call.Name))
-
-		if call.Name == "find_files" {
-			argsInfo := formatFindFilesArgs(call.Args)
-			if argsInfo != "" {
-				fmt.Printf("%s\n", ui.Info("Arguments: "+argsInfo))
-			}
-		}
+		toolOutput := getToolDisplayName(call.Name, call.Args)
+		fmt.Println(ui.Success("✓ " + toolOutput))
 
 		if result != "" {
 			if call.Name == "attempt_completion" {
 				fmt.Println(ui.Info(result))
 			} else if isFileOperation(call.Name) {
-				// special handling for file operations
-				displayResult := limitFileToolOutput(result)
-				normalizedResult := NormalizeOutput(displayResult)
-				fmt.Printf("```\n%s\n```\n", normalizedResult)
+				// show file path instead of content for file operations
+				filepath := getFilePathFromArgs(call.Args)
+				if filepath != "" {
+					fmt.Println(ui.Info(fmt.Sprintf("File: %s", filepath)))
+				}
+			} else if call.Name == "bash" {
+				// show command and limited output for bash
+				if cmd := getBashCommand(call.Args); cmd != "" {
+					fmt.Println(ui.Info(fmt.Sprintf("Command: %s", cmd)))
+				}
+				if result != "" {
+					displayResult := limitToolOutputForTool(call.Name, result)
+					_ = NormalizeOutput(displayResult)
+					fmt.Println(displayResult)
+				}
 			} else {
-				result = limitToolOutput(result)
-				// normalize output for correct Unicode display
-				normalizedResult := NormalizeOutput(result)
-				fmt.Printf("Tool result: %s\n", normalizedResult)
+				displayResult := limitToolOutputForTool(call.Name, result)
+				_ = NormalizeOutput(displayResult)
+				fmt.Println(displayResult)
 			}
 		}
 	}
 
-	// save full result for AI, display limitation already applied above
-	t.promptData.AddToolResponse(call.ID, result)
+	// add original (untruncated) result to history
+	t.promptData.AddToolResponse(call.ID, originalResult)
+}
+
+func getToolDisplayName(toolName string, args map[string]any) string {
+	switch toolName {
+	case "bash":
+		if cmd := getBashCommand(args); cmd != "" {
+			return fmt.Sprintf("bash: %s", cmd)
+		}
+	case "read_file", "write_file", "lsp_edit":
+		if filepath := getFilePathFromArgs(args); filepath != "" {
+			return fmt.Sprintf("%s: %s", toolName, filepath)
+		}
+	}
+	return toolName
+}
+
+func getBashCommand(args map[string]any) string {
+	if cmd, ok := args["command"].(string); ok {
+		return cmd
+	}
+	return ""
+}
+
+func getFilePathFromArgs(args map[string]any) string {
+	if path, ok := args["path"].(string); ok {
+		return path
+	}
+	if file, ok := args["file"].(string); ok {
+		return file
+	}
+	return ""
 }
 
 func limitToolOutput(result string) string {
@@ -413,7 +422,15 @@ func limitToolOutput(result string) string {
 	return result
 }
 
-// isFileOperation checks if tool is a file operation
+func limitToolOutputForTool(toolName, result string) string {
+	// don't limit output for decompose_task to show full plan
+	if toolName == "decompose_task" {
+		return result
+	}
+	
+	return limitToolOutput(result)
+}
+
 func isFileOperation(toolName string) bool {
 	switch toolName {
 	case "read_file", "write_file", "lsp_edit":
@@ -423,17 +440,14 @@ func isFileOperation(toolName string) bool {
 	}
 }
 
-// limitFileToolOutput limits file operations output to 13 lines and 1500 characters
 func limitFileToolOutput(result string) string {
 	maxLines := 13
 	maxChars := 1500
 
-	// first limit by characters
 	if len(result) > maxChars {
 		result = result[:maxChars] + "\n... [showing first 1500 characters]"
 	}
 
-	// then by lines
 	lines := strings.Split(result, "\n")
 	if len(lines) > maxLines {
 		truncated := strings.Join(lines[:maxLines], "\n")
@@ -443,17 +457,15 @@ func limitFileToolOutput(result string) string {
 	return result
 }
 
-// NormalizeOutput normalizes Unicode and removes problematic characters
 func NormalizeOutput(s string) string {
-	// replace typographic quotes and apostrophes with regular ones
 	replacements := map[string]string{
-		"\u2018": "'",   // Left single quotation mark
-		"\u2019": "'",   // Right single quotation mark
-		"\u201C": "\"",  // Left double quotation mark
-		"\u201D": "\"",  // Right double quotation mark
-		"\u2013": "-",   // En dash
-		"\u2014": "-",   // Em dash
-		"\u2026": "...", // Ellipsis
+		"\u2018": "'",
+		"\u2019": "'",
+		"\u201C": "\"",
+		"\u201D": "\"",
+		"\u2013": "-",
+		"\u2014": "-",
+		"\u2026": "...",
 	}
 
 	result := s
@@ -461,10 +473,8 @@ func NormalizeOutput(s string) string {
 		result = strings.ReplaceAll(result, old, new)
 	}
 
-	// remove only truly problematic control characters
 	var clean strings.Builder
 	for _, r := range result {
-		// allow: newlines, tabs, regular printable characters and Unicode characters
 		if r == '\n' || r == '\t' || r == '\r' || (r >= 32 && r != 127) || r > 127 {
 			clean.WriteRune(r)
 		}
@@ -491,7 +501,6 @@ func (t *Task) checkContext(ctx context.Context) error {
 	}
 }
 
-// AddUserMessage adds a user message to history
 func (t *Task) AddUserMessage(message string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -546,7 +555,6 @@ func (t *Task) trimHistoryIfNeeded() {
 }
 
 func (t *Task) contextCompaction(messagesToTrim int) string {
-	// Collect messages to summarize
 	var messagesToSummarize []string
 	for i := 1; i <= messagesToTrim && i < len(t.promptData.Messages); i++ {
 		msg := t.promptData.Messages[i]
@@ -557,7 +565,6 @@ func (t *Task) contextCompaction(messagesToTrim int) string {
 		return ""
 	}
 
-	// Create summarization prompt
 	summaryPrompt := fmt.Sprintf(`Summarize the following conversation history in a concise format that preserves the most important context for an AI coding assistant:
 
 %s
@@ -571,22 +578,19 @@ Create a brief summary focusing on:
 
 Keep it under 200 words and use clear, factual language.`, strings.Join(messagesToSummarize, "\n"))
 
-	// Create a simple prompt data for summarization
 	summaryPromptData := entity.PromptData{
 		SystemPrompt: "You are a helpful assistant that creates concise summaries of conversation history.",
 		Messages: []entity.Message{
 			{Role: "user", Content: summaryPrompt},
 		},
-		Tools: []entity.ToolDefinition{}, // No tools needed for summarization
+		Tools: []entity.ToolDefinition{},
 	}
 
-	// Call AI for summarization
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	response, err := t.client.GenerateCode(ctx, summaryPromptData)
 	if err != nil {
-		// Fallback to simple extraction if AI call fails
 		return t.fallbackContextCompaction(messagesToTrim)
 	}
 
@@ -597,7 +601,6 @@ Keep it under 200 words and use clear, factual language.`, strings.Join(messages
 	return fmt.Sprintf("CONTEXT SUMMARY FROM PREVIOUS MESSAGES:\n%s\n\nContinue building on this work.", response.Content)
 }
 
-// fallbackContextCompaction provides the original simple context extraction as fallback
 func (t *Task) fallbackContextCompaction(messagesToTrim int) string {
 	var toolsUsed []string
 	var filesModified []string
@@ -750,4 +753,58 @@ func clearDecomposedTask() {
 	state := tools.GetTaskState()
 	state.SetContext("has_decomposed_task", false)
 	state.SetContext("decomposed_task", nil)
+}
+
+// displayReasoning extracts and displays reasoning sections from AI responses
+func (t *Task) displayReasoning(content string) {
+	reasoning := extractReasoning(content)
+	if reasoning != "" {
+		fmt.Print(formatReasoning(reasoning))
+	}
+}
+
+// extractReasoning finds tool explanations in the response
+func extractReasoning(resp string) string {
+	lines := strings.Split(resp, "\n")
+	var explanations []string
+	
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		
+		// look for explanatory phrases that indicate tool usage reasoning
+		if strings.Contains(trimmed, "I need to") ||
+		   strings.Contains(trimmed, "Let me") ||
+		   strings.Contains(trimmed, "I'll") ||
+		   strings.Contains(trimmed, "I will") ||
+		   strings.Contains(trimmed, "Let's") ||
+		   (strings.Contains(trimmed, "to ") && 
+		    (strings.Contains(trimmed, "check") || 
+		     strings.Contains(trimmed, "see") ||
+		     strings.Contains(trimmed, "find") ||
+		     strings.Contains(trimmed, "read") ||
+		     strings.Contains(trimmed, "understand") ||
+		     strings.Contains(trimmed, "analyze"))) {
+			
+			// skip if it's part of code or too long
+			if !strings.Contains(line, "```") && len(trimmed) < 150 {
+				explanations = append(explanations, trimmed)
+			}
+		}
+	}
+	
+	if len(explanations) > 0 {
+		// return the first explanation found
+		return explanations[0]
+	}
+	
+	return ""
+}
+
+// formatReasoning styles the reasoning text with colors
+func formatReasoning(reasoning string) string {
+	if reasoning == "" {
+		return ""
+	}
+	
+	return ui.BrightCyan("💭 ") + ui.BrightGray(reasoning) + "\n"
 }
