@@ -51,9 +51,7 @@ Available tools:
 
 - search_dir: search for patterns in files
 - find_files: find files by name/pattern
-- execute_command: run shell commands
-- go_test: run Go tests
-- go_vet: run Go code analysis
+- bash: run any shell commands
 - attempt_completion: finish the task
 
 Choose the most appropriate tool for what you need to do and execute it now.`
