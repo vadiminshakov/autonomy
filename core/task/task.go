@@ -3,7 +3,6 @@ package task
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -427,7 +426,7 @@ func limitToolOutputForTool(toolName, result string) string {
 	if toolName == "decompose_task" {
 		return result
 	}
-	
+
 	return limitToolOutput(result)
 }
 
@@ -438,23 +437,6 @@ func isFileOperation(toolName string) bool {
 	default:
 		return false
 	}
-}
-
-func limitFileToolOutput(result string) string {
-	maxLines := 13
-	maxChars := 1500
-
-	if len(result) > maxChars {
-		result = result[:maxChars] + "\n... [showing first 1500 characters]"
-	}
-
-	lines := strings.Split(result, "\n")
-	if len(lines) > maxLines {
-		truncated := strings.Join(lines[:maxLines], "\n")
-		return truncated + "\n... [showing first 13 lines]"
-	}
-
-	return result
 }
 
 func NormalizeOutput(s string) string {
@@ -565,7 +547,8 @@ func (t *Task) contextCompaction(messagesToTrim int) string {
 		return ""
 	}
 
-	summaryPrompt := fmt.Sprintf(`Summarize the following conversation history in a concise format that preserves the most important context for an AI coding assistant:
+	summaryPrompt := fmt.Sprintf(`Summarize the following conversation history in a concise format `+
+		`that preserves the most important context for an AI coding assistant:
 
 %s
 
@@ -691,37 +674,6 @@ func (t *Task) copyPromptData() entity.PromptData {
 	return promptCopy
 }
 
-func formatFindFilesArgs(args map[string]any) string {
-	var parts []string
-
-	if path, ok := args["path"].(string); ok && path != "" {
-		if path == "." {
-			parts = append(parts, "path: current directory")
-		} else {
-			parts = append(parts, fmt.Sprintf("path: %s", path))
-		}
-	}
-
-	if pattern, ok := args["pattern"].(string); ok && pattern != "" {
-		parts = append(parts, fmt.Sprintf("pattern: %s", pattern))
-	}
-
-	if caseInsensitive, ok := args["case_insensitive"]; ok {
-		var isInsensitive bool
-		switch v := caseInsensitive.(type) {
-		case bool:
-			isInsensitive = v
-		case string:
-			isInsensitive = (v == "true" || v == "1")
-		}
-		if isInsensitive {
-			parts = append(parts, "case_insensitive: true")
-		}
-	}
-
-	return strings.Join(parts, ", ")
-}
-
 func hasDecomposedTask() bool {
 	state := tools.GetTaskState()
 	hasTask, exists := state.GetContext("has_decomposed_task")
@@ -767,37 +719,53 @@ func (t *Task) displayReasoning(content string) {
 func extractReasoning(resp string) string {
 	lines := strings.Split(resp, "\n")
 	var explanations []string
-	
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		
-		// look for explanatory phrases that indicate tool usage reasoning
-		if strings.Contains(trimmed, "I need to") ||
-		   strings.Contains(trimmed, "Let me") ||
-		   strings.Contains(trimmed, "I'll") ||
-		   strings.Contains(trimmed, "I will") ||
-		   strings.Contains(trimmed, "Let's") ||
-		   (strings.Contains(trimmed, "to ") && 
-		    (strings.Contains(trimmed, "check") || 
-		     strings.Contains(trimmed, "see") ||
-		     strings.Contains(trimmed, "find") ||
-		     strings.Contains(trimmed, "read") ||
-		     strings.Contains(trimmed, "understand") ||
-		     strings.Contains(trimmed, "analyze"))) {
-			
-			// skip if it's part of code or too long
-			if !strings.Contains(line, "```") && len(trimmed) < 150 {
-				explanations = append(explanations, trimmed)
-			}
+
+		if isReasoningLine(trimmed) && isValidReasoningLine(line, trimmed) {
+			explanations = append(explanations, trimmed)
 		}
 	}
-	
+
 	if len(explanations) > 0 {
-		// return the first explanation found
 		return explanations[0]
 	}
-	
+
 	return ""
+}
+
+// isReasoningLine checks if line contains reasoning phrases
+func isReasoningLine(trimmed string) bool {
+	reasoningPhrases := []string{"I need to", "Let me", "I'll", "I will", "Let's"}
+
+	for _, phrase := range reasoningPhrases {
+		if strings.Contains(trimmed, phrase) {
+			return true
+		}
+	}
+
+	return hasActionPhrase(trimmed)
+}
+
+// hasActionPhrase checks for "to [action]" patterns
+func hasActionPhrase(trimmed string) bool {
+	if !strings.Contains(trimmed, "to ") {
+		return false
+	}
+
+	actions := []string{"check", "see", "find", "read", "understand", "analyze"}
+	for _, action := range actions {
+		if strings.Contains(trimmed, action) {
+			return true
+		}
+	}
+	return false
+}
+
+// isValidReasoningLine checks if line is valid for reasoning extraction
+func isValidReasoningLine(line, trimmed string) bool {
+	return !strings.Contains(line, "```") && len(trimmed) < 150
 }
 
 // formatReasoning styles the reasoning text with colors
@@ -805,6 +773,6 @@ func formatReasoning(reasoning string) string {
 	if reasoning == "" {
 		return ""
 	}
-	
+
 	return ui.BrightCyan("💭 ") + ui.BrightGray(reasoning) + "\n"
 }

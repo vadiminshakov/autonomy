@@ -18,11 +18,11 @@ func bashCommand(args map[string]interface{}) (string, error) {
 
 	cmd := exec.Command("bash", "-c", command)
 	output, err := cmd.CombinedOutput()
-	
+
 	result := strings.TrimSpace(string(output))
 	if err != nil {
 		return result, fmt.Errorf("command failed: %v", err)
 	}
-	
+
 	return result, nil
 }

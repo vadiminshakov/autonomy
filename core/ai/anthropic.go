@@ -596,7 +596,7 @@ func (h *AnthropicHandler) validateRequest(req AnthropicRequest) error {
 			if content.Type == "" {
 				return fmt.Errorf("message %d, content %d: type is required", i, j)
 			}
-			
+
 			// additional validation for tool_use content
 			if content.Type == "tool_use" {
 				if content.ID == "" {

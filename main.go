@@ -72,7 +72,6 @@ func runProgram(headless bool) {
 func monitorVSCodeProcess(vscodePIDStr string) {
 	vscodePID, err := strconv.Atoi(vscodePIDStr)
 	if err != nil {
-
 		return
 	}
 

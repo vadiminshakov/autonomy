@@ -143,9 +143,6 @@ func lspEdit(args map[string]interface{}) (string, error) {
 			return "", fmt.Errorf("invalid edit #%d: %v", i+1, err)
 		}
 
-		// log the change
-		logEdit(edit, i+1, len(sortedEdits))
-
 		// apply the edit
 		newLines, changes := applyEdit(modifiedLines, edit)
 		modifiedLines = newLines
@@ -248,16 +245,6 @@ func validateEdit(edit EditRequest, totalLines int) error {
 	}
 
 	return nil
-}
-
-// logEdit logs edit operation
-func logEdit(edit EditRequest, editNum, totalEdits int) {
-	desc := edit.Description
-	if desc == "" {
-		desc = fmt.Sprintf("lines %d-%d", edit.StartLine, edit.EndLine)
-	}
-
-	// Edit info
 }
 
 // applyEdit applies one edit operation to array of lines

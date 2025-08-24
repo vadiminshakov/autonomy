@@ -6,7 +6,7 @@ import (
 
 // GetToolDescriptions returns tool definitions
 //
-//nolint:lll,gocyclo
+//nolint:lll
 func GetToolDescriptions() []entity.ToolDefinition {
 	toolDesc := map[string]string{
 		"get_project_structure": "View project directory tree in a textual form. Use to understand project layout",

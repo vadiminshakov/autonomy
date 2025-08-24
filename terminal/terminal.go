@@ -104,7 +104,7 @@ func RunHeadless(client ai.AIClient) error {
 		t.Close()
 
 		if err != nil {
-			// Task processing error - continue silently
+			fmt.Println(ui.Error(fmt.Sprintf("Task failed: %v", err)))
 		}
 	}
 

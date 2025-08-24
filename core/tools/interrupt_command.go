@@ -63,7 +63,7 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 		// Command exceeded timeout, interrupt it
 
 		// Try graceful termination first
-		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil { //nolint:staticcheck // Intentionally ignoring error
 			// Failed to send SIGTERM
 		}
 
@@ -72,7 +72,7 @@ func InterruptCommand(args map[string]interface{}) (string, error) {
 
 		// Force kill if still running
 		if cmd.Process != nil && cmd.ProcessState == nil {
-			if err := cmd.Process.Kill(); err != nil {
+			if err := cmd.Process.Kill(); err != nil { //nolint:staticcheck // Intentionally ignoring error
 				// Failed to kill process
 			}
 		}

@@ -20,7 +20,6 @@ func RunHeadlessSimple() error {
 		if input == "exit" || input == "quit" {
 			break
 		}
-
 	}
 	return nil
 }
@@ -47,7 +46,7 @@ func RunHeadlessWithInit() error {
 		}
 
 		// Initialize AI client on first real task
-		if !initialized {			
+		if !initialized {
 			cfg, err := config.LoadConfigFile()
 			if err != nil {
 				fmt.Printf("❌ Configuration error: %v\n", err)
